@@ -304,10 +304,15 @@ async def logout(
             found = await db.execute(select(Session).where(Session.access_jti == str(jti)))
             session = found.scalars().first()
 
-    if session is not None and session.revoked_at is None:
-        # `refresh_tokens` rejects a session with `revoked_at` set, so the
-        # refresh token is dead without needing a denylist row of its own.
-        session.revoked_at = now()
+    if session is not None:
+        if session.revoked_at is None:
+            # `refresh_tokens` rejects a session with `revoked_at` set, so the
+            # refresh token is dead without needing a denylist row of its own.
+            session.revoked_at = now()
+        # ...but the ACCESS token it minted is only stopped by the denylist.
+        # This was the one site of four that set `revoked_at` and stopped there,
+        # which is the exact mistake `access_jti` was added to prevent.
+        await _revoke_session_access(db, session)
 
     await purge_expired_revocations(db)
     await db.commit()
@@ -565,7 +570,7 @@ async def _revoke_jti(db: AsyncSession, payload: dict[str, Any]) -> None:
     exp = payload.get("exp")
     if not jti or exp is None:
         return
-    if await db.get(RevokedToken, jti) is None:
+    if not await _already_revoked(db, jti):
         db.add(RevokedToken(jti=jti, expires_at=datetime.fromtimestamp(exp, tz=UTC)))
 
 
@@ -610,9 +615,24 @@ async def _revoke_session_access(db: AsyncSession, session: Session) -> None:
     expires_at = session.access_expires_at or session.expires_at
     if expires_at <= now():
         return  # already worthless; a denylist row would only be litter
-    if await db.get(RevokedToken, session.access_jti) is not None:
+    if await _already_revoked(db, session.access_jti):
         return
     db.add(RevokedToken(jti=session.access_jti, expires_at=expires_at))
+
+
+async def _already_revoked(db: AsyncSession, jti: str) -> bool:
+    """Is this token id on the denylist, or about to be?
+
+    The pending check is the load-bearing half. The session is built with
+    `autoflush=False`, so a row added earlier in the same request is invisible
+    to `db.get` — and `logout` revokes the caller's access token by `jti` and
+    then revokes the session that minted it, which is usually the same token.
+    Without this the second insert is a primary-key violation and signing out
+    answers 500.
+    """
+    if any(isinstance(pending, RevokedToken) and pending.jti == jti for pending in db.new):
+        return True
+    return await db.get(RevokedToken, jti) is not None
 
 
 async def purge_expired_revocations(db: AsyncSession) -> None:

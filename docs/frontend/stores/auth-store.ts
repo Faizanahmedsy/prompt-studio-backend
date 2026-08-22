@@ -51,6 +51,30 @@ export type AuthState = {
   clearError: () => void
 }
 
+/**
+ * Forget everything the previous account left on this machine.
+ *
+ * The project store and the sync links persist under fixed keys, so without
+ * this they simply outlive the session: sign out, sign in as somebody else, and
+ * their editor opens on the previous person's diagrams — read off disk, fully
+ * rendered, for a project their address was never added to. That is the one
+ * rule this product makes, broken on the client side.
+ *
+ * Imported lazily. Neither store imports this one, so there is no cycle today,
+ * and keeping it that way is cheaper than remembering not to create one.
+ */
+async function tearDownLocalData(): Promise<void> {
+  const { useProjectStore } = await import("@/stores/use-project-store")
+  const { useSyncStore } = await import("@/stores/use-sync-store")
+
+  useProjectStore.setState({ projects: [], activeId: null, past: {}, future: {} })
+  useSyncStore.setState({ links: {}, versions: {}, state: {}, errors: {} })
+  await Promise.allSettled([
+    useProjectStore.persist.clearStorage(),
+    useSyncStore.persist.clearStorage(),
+  ])
+}
+
 function messageOf(error: unknown): string {
   if (isApiError(error)) return error.message
   if (error instanceof Error) return error.message
@@ -90,16 +114,23 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   },
 
   logout: async () => {
-    // Local state is cleared first and unconditionally. If the network call
-    // fails the user must still end up signed out of this browser — the
-    // server-side revoke is best-effort, the local one is not.
+    // The server call goes first, while the tokens still exist.
+    //
+    // Clearing them beforehand sent the request with no Authorization header,
+    // so an authenticated route answered 401 and the session was never
+    // revoked — the refresh token stayed mintable for its full thirty days
+    // while the person was told they had signed out. The local sign-out is
+    // still unconditional; that is what `finally` is for.
     const refreshToken = getRefreshToken()
-    set({ user: null, status: "anon", error: null })
-    clearTokens()
     try {
       await authApi.logout(refreshToken)
     } catch {
-      // Already signed out locally; nothing useful to show the user.
+      // Best effort. Being unable to tell the server must not keep someone
+      // signed in on this machine.
+    } finally {
+      set({ user: null, status: "anon", error: null })
+      clearTokens()
+      await tearDownLocalData()
     }
   },
 
@@ -141,6 +172,9 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
  */
 setUnauthorizedHandler(() => {
   useAuthStore.setState({ user: null, status: "anon" })
+  // A session that ended on its own leaves exactly the same residue on disk as
+  // one the person ended deliberately.
+  void tearDownLocalData()
 })
 
 // Selectors — subscribing to a slice rather than the whole store keeps a

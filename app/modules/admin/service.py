@@ -538,6 +538,12 @@ async def stats(db: AsyncSession) -> PlatformStats:
             )
         ),
         active_last_24_hours=await count(
-            select(func.count(User.id)).where(User.last_seen_at >= day_ago)
+            select(func.count(User.id)).where(
+                # Every other counter here excludes deleted accounts; this one
+                # did not, so the dashboard overstated activity by whoever had
+                # been removed since they last signed in.
+                User.is_deleted.is_(False),
+                User.last_seen_at >= day_ago,
+            )
         ),
     )

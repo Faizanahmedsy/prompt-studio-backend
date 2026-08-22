@@ -27,8 +27,22 @@ let memoryRefresh: string | null = null
 type Listener = (tokens: { access: string | null; refresh: string | null }) => void
 const listeners = new Set<Listener>()
 
+// Whether `localStorage` can be *used*, not merely whether it exists. A browser
+// set to block site data, and any cross-origin iframe, throws on the property
+// access itself — so `typeof window.localStorage` is not a safe question to ask.
+// Probed once and remembered, because the answer cannot change mid-session.
+let storageUsable: boolean | null = null
+
 function canUseStorage(): boolean {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined"
+  if (storageUsable !== null) return storageUsable
+  if (typeof window === "undefined") return false
+  try {
+    window.localStorage.getItem("__prompt-studio-probe")
+    storageUsable = true
+  } catch {
+    storageUsable = false
+  }
+  return storageUsable
 }
 
 function readKey(key: string): string | null {
@@ -62,12 +76,20 @@ function notify(): void {
   }
 }
 
+// Storage first, mirror second — and the order is the whole point.
+//
+// The mirror exists for a browser that cannot persist at all. Consulted first,
+// it also shadows a rotation performed by another tab: tab A keeps sending a
+// pair that tab B has already rotated away, the server rejects it as revoked,
+// the refresh fails on an equally stale refresh token, and `clearTokens()` then
+// wipes the *valid* pair out of the storage both tabs share — signing out every
+// window at once. Two tabs open is the ordinary way this editor is used.
 export function getAccessToken(): string | null {
-  return memoryAccess ?? readKey(ACCESS_KEY)
+  return readKey(ACCESS_KEY) ?? memoryAccess
 }
 
 export function getRefreshToken(): string | null {
-  return memoryRefresh ?? readKey(REFRESH_KEY)
+  return readKey(REFRESH_KEY) ?? memoryRefresh
 }
 
 /** Store a fresh pair. Accepts anything token-shaped (login, register, refresh). */

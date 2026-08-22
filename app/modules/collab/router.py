@@ -134,23 +134,23 @@ async def collaborate(
             }
         )
 
-        last_check = now().timestamp()
+        # A deadline, not a fixed timeout. With a timeout, a client that pings
+        # every 25 seconds resets the wait each time and the next check lands at
+        # 50 seconds rather than 30 — so the busier the tab, the longer a
+        # revoked session survives, which is exactly backwards.
+        deadline = now().timestamp() + REVALIDATE_SECONDS
         while True:
-            # The timeout is what makes the check server-driven: a client that
-            # simply stops sending must not be able to hold a revoked session
-            # open by staying quiet.
+            remaining = max(0.0, deadline - now().timestamp())
             try:
-                message = await asyncio.wait_for(
-                    websocket.receive_json(), timeout=REVALIDATE_SECONDS
-                )
+                message = await asyncio.wait_for(websocket.receive_json(), timeout=remaining)
             except TimeoutError:
                 message = None
 
-            if now().timestamp() - last_check >= REVALIDATE_SECONDS:
+            if now().timestamp() >= deadline:
                 if not await _still_authorised(user.id, access_jti, project_id):
                     await _close(websocket, WS_UNAUTHORISED, "Your access changed")
                     return
-                last_check = now().timestamp()
+                deadline = now().timestamp() + REVALIDATE_SECONDS
 
             if message is None:
                 continue

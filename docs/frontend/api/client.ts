@@ -125,11 +125,22 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
  * routing it back through the client would let a 401 on the refresh itself
  * trigger another refresh, forever.
  */
-let refreshInFlight: Promise<boolean> | null = null
+/**
+ * Three outcomes, not two.
+ *
+ * "the server rejected this token" and "I could not reach the server" look the
+ * same to a boolean, and the caller responds to `false` by deleting the tokens.
+ * So a 502 from a proxy, or a laptop lid closing mid-request, used to destroy a
+ * refresh token with twenty-nine days left on it and sign the person out for
+ * good. Only a real rejection may do that.
+ */
+type RefreshOutcome = "ok" | "rejected" | "unavailable"
 
-async function performRefresh(): Promise<boolean> {
+let refreshInFlight: Promise<RefreshOutcome> | null = null
+
+async function performRefresh(): Promise<RefreshOutcome> {
   const refreshToken = getRefreshToken()
-  if (!refreshToken) return false
+  if (!refreshToken) return "rejected"
 
   try {
     const response = await fetch(`${API_BASE}/auth/refresh`, {
@@ -137,16 +148,19 @@ async function performRefresh(): Promise<boolean> {
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken }),
     })
-    if (!response.ok) return false
+    // 5xx is the server having a bad time, not a verdict on this token.
+    if (!response.ok) return response.status >= 500 ? "unavailable" : "rejected"
 
     const parsed: unknown = await response.json()
     const token = unwrapEnvelope<Token>(parsed)
-    if (!token || typeof token.access_token !== "string") return false
+    if (!token || typeof token.access_token !== "string") return "unavailable"
 
     setTokens(token)
-    return true
+    return "ok"
   } catch {
-    return false
+    // Network failure, DNS, CORS, an aborted navigation — none of them mean
+    // the credential is bad.
+    return "unavailable"
   }
 }
 
@@ -159,10 +173,10 @@ async function performRefresh(): Promise<boolean> {
  * same thing.
  */
 export function ensureFreshToken(): Promise<boolean> {
-  return refreshAccessToken()
+  return refreshAccessToken().then((outcome) => outcome === "ok")
 }
 
-function refreshAccessToken(): Promise<boolean> {
+function refreshAccessToken(): Promise<RefreshOutcome> {
   if (refreshInFlight) return refreshInFlight
   refreshInFlight = performRefresh().finally(() => {
     refreshInFlight = null
@@ -268,14 +282,19 @@ async function requestOnce<T>(
     // Refreshing because the refresh route itself said 401 is a loop.
     !path.startsWith("/auth/refresh")
   ) {
-    const refreshed = await refreshAccessToken()
-    if (refreshed) {
+    const outcome = await refreshAccessToken()
+    if (outcome === "ok") {
       // Replayed exactly once. A second 401 means the new token is not the
       // problem — the caller genuinely has no access — and falls through below.
       return requestOnce<T>(path, options, true)
     }
-    clearTokens()
-    onUnauthorized?.()
+    if (outcome === "rejected") {
+      // Only a server that actually answered may end the session. On
+      // "unavailable" the 401 surfaces as an ApiError and the stored tokens
+      // are left alone for the next attempt.
+      clearTokens()
+      onUnauthorized?.()
+    }
   }
 
   const payload = await readBody(response)

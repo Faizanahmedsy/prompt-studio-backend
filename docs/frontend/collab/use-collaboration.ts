@@ -281,6 +281,16 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
    *  send path must read it synchronously, not one render later. */
   const docVersionRef = useRef<number>(0)
   const pendingDocRef = useRef<ProjectDocPayload | null>(null)
+  /**
+   * The version the queued document was edited from.
+   *
+   * A save queued while the socket was down is flushed on `hello` — but by
+   * then `docVersionRef` holds the version `hello` just delivered, so the save
+   * goes out claiming to be based on work it has never seen. That is a forced
+   * overwrite of whatever the other members did during the outage, through the
+   * one code path the `doc.conflict` guard exists to catch.
+   */
+  const pendingBaseRef = useRef<number | null>(null)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cursorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastCursorAtRef = useRef<number>(0)
@@ -314,12 +324,19 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
       schema_version: optionsRef.current.schemaVersion,
     })
     // Left queued when the socket is down, so a reconnect flushes it on `open`.
-    if (sent) pendingDocRef.current = null
+    if (sent) {
+      pendingDocRef.current = null
+      pendingBaseRef.current = null
+    }
   }, [sendRaw])
 
   const sendDoc = useCallback(
     (doc: ProjectDocPayload, sendOptions?: { immediate?: boolean }): void => {
       pendingDocRef.current = doc
+      // Recorded now, while it is still true.
+      if (pendingBaseRef.current === null) {
+        pendingBaseRef.current = docVersionRef.current || null
+      }
       if (debounceTimerRef.current !== null) {
         clearTimeout(debounceTimerRef.current)
         debounceTimerRef.current = null
@@ -374,10 +391,23 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
         // server's — the consumer decides whether to adopt it wholesale.
         handlers.onHello?.(message)
         // A save queued while the socket was down goes out here rather than in
-        // `onopen`: only now do we know the version to base it on, and sending
-        // one beat earlier would mean a forced write that ignores whatever
-        // somebody else saved during the outage.
-        if (pendingDocRef.current !== null) flushDoc()
+        // `onopen`: only now do we know the version to base it on. But it may
+        // be based on a version the server has already moved past, and flushing
+        // it regardless would overwrite whatever happened during the outage
+        // without ever raising the conflict this protocol exists to raise.
+        if (pendingDocRef.current !== null) {
+          const basedOn = pendingBaseRef.current
+          if (basedOn !== null && basedOn !== message.doc_version) {
+            // Dropped, not forced. `onHello` has just replaced the local
+            // document with the server's, and the render that follows re-queues
+            // whatever the person still has on screen — this time based on a
+            // version that exists.
+            pendingDocRef.current = null
+            pendingBaseRef.current = null
+          } else {
+            flushDoc()
+          }
+        }
         break
       }
 

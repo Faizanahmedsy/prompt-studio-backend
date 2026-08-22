@@ -56,3 +56,23 @@ declare module "zustand" {
 declare const process: {
   env: Record<string, string | undefined>
 }
+
+/**
+ * The app's own stores, which `auth-store.ts` reaches for when it clears the
+ * previous account's data on sign-out. They live in `prompt-studio`, not here,
+ * so this declares just enough of their shape for this folder to typecheck on
+ * its own. The real modules replace it the moment the file is copied across.
+ */
+declare module "@/stores/use-project-store" {
+  export const useProjectStore: {
+    setState: (partial: Record<string, unknown>) => void
+    persist: { clearStorage: () => void | Promise<void> }
+  }
+}
+
+declare module "@/stores/use-sync-store" {
+  export const useSyncStore: {
+    setState: (partial: Record<string, unknown>) => void
+    persist: { clearStorage: () => void | Promise<void> }
+  }
+}
