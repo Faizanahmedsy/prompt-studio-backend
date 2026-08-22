@@ -1,0 +1,78 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: prompt-studio-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-intelliwealth}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
+      POSTGRES_DB: ${POSTGRES_DB:-prompt_studio}
+    ports:
+      # Bound to 127.0.0.1 on purpose. Without the explicit host IP, Docker
+      # publishes on every interface AND writes its own iptables rule, so the
+      # database ends up reachable from the internet regardless of the host
+      # firewall. Anything off-box must tunnel:
+      #   ssh -L 5442:127.0.0.1:5442 <host>
+      #
+      # 5442 rather than 5432/5433: this machine already runs a system Postgres
+      # on 5432 and the IntelliWealth stack claims 5433.
+      - "127.0.0.1:${DB_HOST_PORT:-5442}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-intelliwealth} -d ${POSTGRES_DB:-prompt_studio}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: prompt-studio-redis
+    restart: unless-stopped
+    command: redis-server --requirepass "${REDIS_PASSWORD:-root}" --appendonly yes
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-6382}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"${REDIS_PASSWORD:-root}\" ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build: .
+    image: prompt-studio-api:${API_TAG:-local}
+    container_name: prompt-studio-api
+    restart: unless-stopped
+    # Migrations must block start-up — never serve a half-migrated schema — but
+    # a seed hiccup must not, so the seed is wrapped to always exit 0.
+    command: >
+      sh -c "uv run --no-dev --frozen python scripts/check_env.py &&
+      uv run --no-dev --frozen alembic upgrade head &&
+      (uv run --no-dev --frozen python -m app.seed || echo '[startup] seed failed, continuing') &&
+      uv run --no-dev --frozen uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "${API_HOST_PORT:-8010}:8000"
+    env_file:
+      - .env
+    # `environment:` wins over `env_file:`. The connection details are pinned to
+    # the sibling containers so the host-tuned values in .env (which point at
+    # localhost) do not leak in and leave the API talking to nothing.
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "3" }
+
+volumes:
+  pgdata:
+  redisdata:

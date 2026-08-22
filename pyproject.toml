@@ -1,0 +1,61 @@
+[project]
+name = "prompt-studio-backend"
+version = "0.1.0"
+description = "Prompt Studio API — accounts, shared projects and live collaboration"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    "pydantic[email]>=2.10",
+    "pydantic-settings>=2.7",
+    "pyjwt>=2.10",
+    "pwdlib[bcrypt]>=0.2.1",
+    "python-multipart>=0.0.20",
+    "redis>=5.0.0",
+    "httpx>=0.28",
+    "websockets>=13.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9",
+    "mypy>=1.14",
+    "pytest>=8.3",
+    "pytest-asyncio>=0.25",
+    "httpx>=0.28",
+    "aiosqlite>=0.20",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["alembic.*"]
+ignore_errors = true
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+# One event loop for the whole session, not one per test. asyncpg connections
+# are bound to the loop that opened them, and the engine's pool outlives a
+# single test — with a per-test loop the second test to reuse a pooled
+# connection dies with "attached to a different loop".
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+filterwarnings = ["ignore::DeprecationWarning"]

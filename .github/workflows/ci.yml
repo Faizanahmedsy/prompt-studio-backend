@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: intelliwealth
+          POSTGRES_PASSWORD: root
+          POSTGRES_DB: prompt_studio
+        ports: ["5442:5432"]
+        options: >-
+          --health-cmd "pg_isready -U intelliwealth"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7-alpine
+        # The suite asserts that presence survives crossing a worker, which
+        # only holds when Redis is actually reachable — so it is a real service
+        # here rather than something the tests are allowed to skip.
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 5
+        ports: ["6382:6379"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Format
+        run: uv run ruff format --check .
+
+      - name: Types
+        run: uv run mypy app scripts
+
+      - name: Config guard
+        run: uv run python scripts/check_env.py
+
+      - name: Tests
+        # REDIS_PASSWORD is empty: the CI service runs without `requirepass`,
+        # unlike the compose stack.
+        env:
+          REDIS_PASSWORD: ""
+          SECRET_KEY: ci-only-secret-key-not-used-anywhere-else-0123456789
+        run: uv run pytest -q

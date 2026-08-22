@@ -1,0 +1,1714 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="robots" content="noindex, nofollow">
+<title>Prompt Studio — Admin</title>
+<script>
+/* Applied before first paint so a stored theme choice never flashes. */
+(function () {
+  try {
+    var t = localStorage.getItem('ps.admin.theme');
+    if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  } catch (e) { /* storage unavailable — fall back to the system preference */ }
+})();
+</script>
+<style>
+/* ── tokens: light is the base ──────────────────────────────────────────── */
+:root{
+  --bg:#f4f6f8;
+  --panel:#ffffff;
+  --panel-2:#fafbfc;
+  --panel-3:#f0f2f5;
+  --border:#e1e5ea;
+  --border-strong:#c8cfd8;
+  --text:#141a21;
+  --muted:#5b6673;
+  --faint:#8b95a1;
+  --accent:#2f5fdd;
+  --accent-hover:#254dc0;
+  --accent-fg:#ffffff;
+  --accent-weak:rgba(47,95,221,.10);
+  --ok:#137a48;
+  --ok-weak:rgba(19,122,72,.11);
+  --warn:#96610a;
+  --warn-weak:rgba(150,97,10,.12);
+  --danger:#c02a2a;
+  --danger-hover:#a32222;
+  --danger-weak:rgba(192,42,42,.10);
+  --shadow-sm:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.05);
+  --shadow-lg:0 10px 28px rgba(16,24,40,.14),0 2px 8px rgba(16,24,40,.08);
+  --radius:8px;
+  --radius-sm:6px;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+/* ── dark, when the system asks for it and no explicit light override ───── */
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0c0f13;
+    --panel:#13171d;
+    --panel-2:#181d24;
+    --panel-3:#1e242c;
+    --border:#262d36;
+    --border-strong:#3a424e;
+    --text:#e5eaf1;
+    --muted:#98a3b1;
+    --faint:#6c7684;
+    --accent:#6a8dfa;
+    --accent-hover:#7f9dfb;
+    --accent-fg:#0b0f16;
+    --accent-weak:rgba(106,141,250,.15);
+    --ok:#3dbd76;
+    --ok-weak:rgba(61,189,118,.14);
+    --warn:#d7a441;
+    --warn-weak:rgba(215,164,65,.15);
+    --danger:#ef665f;
+    --danger-hover:#f47a74;
+    --danger-weak:rgba(239,102,95,.14);
+    --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+    --shadow-lg:0 14px 40px rgba(0,0,0,.55),0 2px 10px rgba(0,0,0,.4);
+  }
+}
+/* ── dark, chosen explicitly — wins over the system in both directions ──── */
+:root[data-theme="dark"]{
+  --bg:#0c0f13;
+  --panel:#13171d;
+  --panel-2:#181d24;
+  --panel-3:#1e242c;
+  --border:#262d36;
+  --border-strong:#3a424e;
+  --text:#e5eaf1;
+  --muted:#98a3b1;
+  --faint:#6c7684;
+  --accent:#6a8dfa;
+  --accent-hover:#7f9dfb;
+  --accent-fg:#0b0f16;
+  --accent-weak:rgba(106,141,250,.15);
+  --ok:#3dbd76;
+  --ok-weak:rgba(61,189,118,.14);
+  --warn:#d7a441;
+  --warn-weak:rgba(215,164,65,.15);
+  --danger:#ef665f;
+  --danger-hover:#f47a74;
+  --danger-weak:rgba(239,102,95,.14);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow-lg:0 14px 40px rgba(0,0,0,.55),0 2px 10px rgba(0,0,0,.4);
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font:400 13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3{margin:0;font-weight:650;letter-spacing:-.01em}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+[hidden]{display:none !important}
+
+/* ── controls ───────────────────────────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:30px;padding:0 11px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);
+  background:var(--panel);color:var(--text);font:inherit;font-weight:550;font-size:12.5px;
+  cursor:pointer;white-space:nowrap;transition:background .12s,border-color .12s,color .12s;
+}
+.btn:hover:not(:disabled){background:var(--panel-3);border-color:var(--faint)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.btn.primary:hover:not(:disabled){background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn.danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.danger:hover:not(:disabled){background:var(--danger-hover);border-color:var(--danger-hover)}
+/* Row-level destructive actions: readable but quiet, solid only on hover, so a
+   dense table is not a wall of red inviting a misclick. */
+.btn.danger-soft{background:transparent;border-color:color-mix(in srgb,var(--danger) 42%,transparent);color:var(--danger)}
+.btn.danger-soft:hover:not(:disabled){background:var(--danger);border-color:var(--danger);color:#fff}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn.ghost:hover:not(:disabled){background:var(--panel-3);color:var(--text)}
+.btn.sm{height:26px;padding:0 8px;font-size:12px}
+.btn.link{background:none;border:none;height:auto;padding:0;color:var(--accent);text-decoration:underline;font-weight:500}
+
+.inp{
+  height:30px;padding:0 9px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);
+  background:var(--panel);color:var(--text);font:inherit;font-size:12.5px;min-width:0;
+}
+.inp:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-weak)}
+select.inp{cursor:pointer;padding-right:6px}
+textarea.inp{height:auto;padding:7px 9px;resize:vertical}
+label.fld{display:flex;flex-direction:column;gap:5px}
+label.fld>span{font-size:11.5px;font-weight:600;color:var(--muted);letter-spacing:.02em}
+label.chk{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12.5px;color:var(--text)}
+label.chk input{width:15px;height:15px;accent-color:var(--accent);cursor:pointer;margin:0;flex:none}
+.hint{font-size:11.5px;color:var(--faint);line-height:1.45}
+
+/* ── shell ──────────────────────────────────────────────────────────────── */
+.topbar{
+  position:sticky;top:0;z-index:40;background:var(--panel);border-bottom:1px solid var(--border);
+}
+.topbar-row{
+  max-width:1500px;margin:0 auto;padding:10px 18px;
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+}
+.brand{display:flex;align-items:center;gap:9px;font-weight:680;font-size:14px;letter-spacing:-.015em}
+.brand .mark{
+  width:24px;height:24px;border-radius:6px;background:var(--accent);color:var(--accent-fg);
+  display:grid;place-items:center;flex:none;
+}
+.brand .mark svg{width:14px;height:14px;display:block}
+.brand .sub{color:var(--faint);font-weight:500;font-size:12px;padding-left:2px}
+.spacer{flex:1 1 auto}
+.who{display:flex;align-items:center;gap:8px;min-width:0}
+.who .dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--accent)}
+.who .txt{min-width:0;line-height:1.25}
+.who .nm{font-weight:600;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:210px}
+.who .rl{font-size:11px;color:var(--faint)}
+
+.tabs{max-width:1500px;margin:0 auto;padding:0 18px;display:flex;gap:2px;overflow-x:auto;scrollbar-width:thin}
+.tab{
+  appearance:none;background:none;border:none;border-bottom:2px solid transparent;
+  padding:9px 12px;margin-bottom:-1px;font:inherit;font-size:12.5px;font-weight:600;
+  color:var(--muted);cursor:pointer;white-space:nowrap;
+}
+.tab:hover{color:var(--text)}
+.tab[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+
+main{max-width:1500px;margin:0 auto;padding:18px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.panel + .panel{margin-top:14px}
+.panel-head{
+  padding:12px 14px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.panel-head h2{font-size:13.5px}
+.panel-head .hint{width:100%}
+.panel-body{padding:14px}
+
+.note{
+  display:flex;gap:9px;align-items:flex-start;
+  margin:0 0 14px;padding:9px 12px;border-radius:var(--radius-sm);
+  background:var(--warn-weak);border:1px solid color-mix(in srgb,var(--warn) 32%,transparent);
+  color:var(--text);font-size:12.5px;line-height:1.5;
+}
+.note svg{width:15px;height:15px;flex:none;margin-top:1px;color:var(--warn)}
+
+/* ── toolbar ────────────────────────────────────────────────────────────── */
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:11px 14px;border-bottom:1px solid var(--border)}
+.toolbar .grow{flex:1 1 200px;min-width:150px}
+.toolbar .search{position:relative;flex:1 1 240px;min-width:160px;display:flex}
+.toolbar .search .inp{width:100%;padding-left:29px}
+.toolbar .search svg{position:absolute;left:9px;top:50%;transform:translateY(-50%);width:13px;height:13px;color:var(--faint);pointer-events:none}
+
+/* ── tables ─────────────────────────────────────────────────────────────── */
+.tablewrap{overflow-x:auto;max-width:100%;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;min-width:780px;font-size:12.5px}
+thead th{
+  position:sticky;top:0;z-index:1;background:var(--panel-2);
+  text-align:left;font-weight:640;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);
+  padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap;
+}
+tbody td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--panel-2)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+th.num{text-align:right}
+td.nowrap,th.nowrap{white-space:nowrap}
+td.acts{text-align:right;white-space:nowrap}
+td.acts .btn{margin-left:4px}
+.state-cell{padding:34px 14px !important;text-align:center;color:var(--faint);font-size:12.5px}
+.state-cell strong{display:block;color:var(--muted);font-size:13px;font-weight:600;margin-bottom:3px}
+tbody tr:hover td.state-cell{background:transparent}
+
+.id{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.pri{font-weight:600}
+.sec{color:var(--faint);font-size:11.5px}
+.tight{line-height:1.3}
+.trunc{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.avatar{
+  width:24px;height:24px;border-radius:50%;flex:none;display:grid;place-items:center;
+  font-size:10.5px;font-weight:700;color:#fff;text-shadow:0 1px 1px rgba(0,0,0,.25);
+}
+.cellflex{display:flex;align-items:center;gap:9px;min-width:0}
+
+.badge{
+  display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:999px;
+  font-size:11px;font-weight:640;letter-spacing:.01em;white-space:nowrap;
+  background:var(--panel-3);color:var(--muted);border:1px solid var(--border);
+}
+.badge.ok{background:var(--ok-weak);color:var(--ok);border-color:color-mix(in srgb,var(--ok) 28%,transparent)}
+.badge.warn{background:var(--warn-weak);color:var(--warn);border-color:color-mix(in srgb,var(--warn) 28%,transparent)}
+.badge.bad{background:var(--danger-weak);color:var(--danger);border-color:color-mix(in srgb,var(--danger) 28%,transparent)}
+.badge.acc{background:var(--accent-weak);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+.badges{display:flex;gap:4px;flex-wrap:wrap}
+
+.pager{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;
+  padding:10px 14px;border-top:1px solid var(--border);
+}
+.pager-info{font-size:11.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pager-btns{display:flex;gap:5px}
+
+/* ── stat tiles ─────────────────────────────────────────────────────────── */
+.statgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:10px}
+.tile{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px 13px;box-shadow:var(--shadow-sm);
+}
+.tile .k{font-size:11px;font-weight:620;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.tile .v{margin-top:5px;font-size:25px;font-weight:680;letter-spacing:-.025em;font-variant-numeric:tabular-nums;line-height:1.1}
+.tile .d{margin-top:3px;font-size:11.5px;color:var(--faint)}
+.tile.accent .v{color:var(--accent)}
+.tile.ok .v{color:var(--ok)}
+.tile.warn .v{color:var(--warn)}
+.tile.bad .v{color:var(--danger)}
+.tile.skel .v{color:var(--faint)}
+.group-title{
+  font-size:11px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);
+  margin:0 0 8px;
+}
+.group + .group{margin-top:16px}
+
+/* ── roles matrix ───────────────────────────────────────────────────────── */
+.matrix td.perm{font-family:var(--mono);font-size:11.5px;white-space:nowrap}
+.matrix td.mark{text-align:center;font-size:14px;line-height:1;width:120px}
+.matrix td.mark.yes{color:var(--ok);font-weight:700}
+.matrix td.mark.no{color:var(--border-strong)}
+.matrix tr.grouprow td{
+  background:var(--panel-2);font-size:10.5px;font-weight:660;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--faint);padding:6px 12px;
+}
+.matrix tr.grouprow:hover td{background:var(--panel-2)}
+
+/* ── login / denied ─────────────────────────────────────────────────────── */
+.centerwrap{min-height:100vh;min-height:100dvh;display:grid;place-items:center;padding:22px}
+.card{
+  width:100%;max-width:376px;background:var(--panel);border:1px solid var(--border);
+  border-radius:12px;box-shadow:var(--shadow-lg);padding:24px;
+}
+.card h1{font-size:17px;margin-bottom:4px}
+.card .lede{color:var(--muted);font-size:12.5px;margin:0 0 18px}
+.card form{display:flex;flex-direction:column;gap:12px}
+.card .inp{height:34px}
+.card .btn{height:34px}
+.formerr{
+  background:var(--danger-weak);border:1px solid color-mix(in srgb,var(--danger) 32%,transparent);
+  color:var(--danger);border-radius:var(--radius-sm);padding:8px 10px;font-size:12px;line-height:1.45;
+}
+.formerr ul{margin:5px 0 0;padding-left:17px}
+.card-foot{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:10px}
+
+/* ── dialogs ────────────────────────────────────────────────────────────── */
+dialog{
+  border:1px solid var(--border);border-radius:11px;background:var(--panel);color:var(--text);
+  padding:0;box-shadow:var(--shadow-lg);width:min(94vw,440px);max-height:88vh;
+}
+dialog::backdrop{background:rgba(8,11,15,.52);backdrop-filter:blur(1.5px)}
+dialog .dlg-head{padding:15px 18px 0}
+dialog .dlg-head h3{font-size:14.5px}
+dialog .dlg-head p{margin:5px 0 0;color:var(--muted);font-size:12.5px;line-height:1.5}
+dialog .dlg-body{padding:15px 18px;display:flex;flex-direction:column;gap:12px;overflow-y:auto}
+dialog .dlg-foot{
+  padding:12px 18px;border-top:1px solid var(--border);background:var(--panel-2);
+  display:flex;justify-content:flex-end;gap:8px;border-radius:0 0 11px 11px;flex-wrap:wrap;
+}
+dialog .dlg-foot .left{margin-right:auto}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:460px){.row2{grid-template-columns:1fr}}
+
+.secret{
+  display:flex;align-items:center;gap:8px;
+  background:var(--panel-3);border:1px dashed var(--border-strong);border-radius:var(--radius-sm);
+  padding:10px 11px;
+}
+.secret code{
+  flex:1 1 auto;font-family:var(--mono);font-size:14px;font-weight:600;letter-spacing:.02em;
+  word-break:break-all;user-select:all;
+}
+
+/* ── toasts ─────────────────────────────────────────────────────────────── */
+#toasts{
+  position:fixed;top:12px;right:12px;z-index:100;display:flex;flex-direction:column;gap:8px;
+  max-width:min(94vw,380px);pointer-events:none;
+}
+.toast{
+  pointer-events:auto;background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--muted);
+  border-radius:var(--radius-sm);box-shadow:var(--shadow-lg);padding:9px 12px;font-size:12.5px;line-height:1.45;
+  display:flex;gap:9px;align-items:flex-start;animation:slide .18s ease-out;
+}
+@keyframes slide{from{opacity:0;transform:translateX(12px)}to{opacity:1;transform:none}}
+.toast.ok{border-left-color:var(--ok)}
+.toast.err{border-left-color:var(--danger)}
+.toast.info{border-left-color:var(--accent)}
+.toast .tbody{flex:1 1 auto;min-width:0}
+.toast .ttl{font-weight:640;display:block}
+.toast .tmsg{color:var(--muted);display:block;margin-top:2px;overflow-wrap:anywhere}
+.toast .tx{
+  flex:none;background:none;border:none;color:var(--faint);cursor:pointer;font-size:15px;
+  line-height:1;padding:0 0 0 4px;
+}
+.toast .tx:hover{color:var(--text)}
+
+/* ── misc ───────────────────────────────────────────────────────────────── */
+.spin{
+  display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;
+  border-radius:50%;animation:sp .6s linear infinite;vertical-align:-1px;
+}
+@keyframes sp{to{transform:rotate(360deg)}}
+.bar{height:2px;background:var(--accent);width:100%;transform-origin:0 50%;animation:pulse 1.1s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:.25}50%{opacity:1}}
+#loadbar{position:fixed;top:0;left:0;right:0;height:2px;z-index:200}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms !important;transition-duration:.01ms !important}}
+@media (max-width:620px){
+  main{padding:12px}
+  .topbar-row{padding:9px 12px}
+  .tabs{padding:0 12px}
+  .who .nm{max-width:120px}
+}
+</style>
+</head>
+<body>
+
+<div id="loadbar" hidden><div class="bar"></div></div>
+<div id="toasts" role="status" aria-live="polite"></div>
+
+<!-- ══ boot ═════════════════════════════════════════════════════════════ -->
+<div id="view-boot" class="centerwrap">
+  <div style="text-align:center;color:var(--muted)">
+    <span class="spin"></span>
+    <div style="margin-top:10px;font-size:12.5px">Checking your session…</div>
+  </div>
+</div>
+
+<!-- ══ login ════════════════════════════════════════════════════════════ -->
+<div id="view-login" class="centerwrap" hidden>
+  <div class="card">
+    <div class="brand" style="margin-bottom:14px">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
+      </span>
+      <span>Prompt Studio</span>
+    </div>
+    <h1>Admin sign in</h1>
+    <p class="lede">Operator access only. Use your platform account.</p>
+    <div id="login-err" class="formerr" hidden></div>
+    <form id="login-form" novalidate>
+      <label class="fld"><span>Email</span>
+        <input class="inp" type="email" name="email" autocomplete="username" required autofocus spellcheck="false">
+      </label>
+      <label class="fld"><span>Password</span>
+        <input class="inp" type="password" name="password" autocomplete="current-password" required>
+      </label>
+      <button class="btn primary" type="submit" id="login-btn">Sign in</button>
+    </form>
+    <div class="card-foot">
+      <span class="hint">Prompt Studio operator panel</span>
+      <button class="btn sm ghost" data-act="theme" title="Switch theme"><span id="theme-label-1">Theme</span></button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ not an admin ═════════════════════════════════════════════════════ -->
+<div id="view-denied" class="centerwrap" hidden>
+  <div class="card" style="text-align:center">
+    <div style="width:38px;height:38px;border-radius:50%;background:var(--danger-weak);color:var(--danger);display:grid;place-items:center;margin:0 auto 12px">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.2v.1"/></svg>
+    </div>
+    <h1>This account is not an administrator</h1>
+    <p class="lede" style="margin-top:6px">Signed in as <strong id="denied-email"></strong>. This panel is limited to accounts with the <code>ADMIN</code> or <code>SUPERADMIN</code> role.</p>
+    <button class="btn" data-act="signout" style="width:100%">Sign out</button>
+  </div>
+</div>
+
+<!-- ══ app ══════════════════════════════════════════════════════════════ -->
+<div id="view-app" hidden>
+  <header class="topbar">
+    <div class="topbar-row">
+      <div class="brand">
+        <span class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6"/><path d="M12 19h8"/></svg>
+        </span>
+        <span>Prompt Studio</span><span class="sub">Admin</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="who">
+        <span class="dot" id="who-dot"></span>
+        <span class="txt">
+          <span class="nm" id="who-name"></span>
+          <span class="rl" id="who-role"></span>
+        </span>
+      </div>
+      <button class="btn sm ghost" data-act="theme" title="Switch theme" aria-label="Switch theme">
+        <span id="theme-icon" aria-hidden="true"></span><span id="theme-label-2"></span>
+      </button>
+      <button class="btn sm" data-act="signout">Sign out</button>
+    </div>
+    <nav class="tabs" role="tablist" aria-label="Admin sections">
+      <button class="tab" role="tab" data-tab="dashboard" aria-selected="false">Dashboard</button>
+      <button class="tab" role="tab" data-tab="users" aria-selected="false">Users</button>
+      <button class="tab" role="tab" data-tab="projects" aria-selected="false">Projects</button>
+      <button class="tab" role="tab" data-tab="audit" aria-selected="false">Audit</button>
+      <button class="tab" role="tab" data-tab="roles" aria-selected="false">Roles</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Dashboard -->
+    <section id="pane-dashboard" role="tabpanel" hidden>
+      <div class="panel-head" style="border:none;padding:0 0 12px">
+        <h2>Platform overview</h2>
+        <div class="spacer"></div>
+        <button class="btn sm" data-act="reload-stats">Refresh</button>
+      </div>
+      <div id="stats-out"></div>
+    </section>
+
+    <!-- Users -->
+    <section id="pane-users" role="tabpanel" hidden>
+      <div class="panel">
+        <div class="toolbar">
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+            <input class="inp" id="u-search" type="search" placeholder="Search email or name…" spellcheck="false" aria-label="Search users">
+          </div>
+          <select class="inp" id="u-role" aria-label="Filter by role">
+            <option value="">All roles</option>
+            <option value="MEMBER">Member</option>
+            <option value="ADMIN">Admin</option>
+            <option value="SUPERADMIN">Superadmin</option>
+          </select>
+          <select class="inp" id="u-active" aria-label="Filter by status">
+            <option value="">Any status</option>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
+          </select>
+          <select class="inp" id="u-sort" aria-label="Sort">
+            <option value="recent">Newest first</option>
+            <option value="name">Name</option>
+            <option value="email">Email</option>
+            <option value="last_seen">Last seen</option>
+          </select>
+          <select class="inp" id="u-size" aria-label="Rows per page">
+            <option value="25">25 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+          </select>
+          <div class="spacer"></div>
+          <button class="btn primary" data-act="new-user">+ New user</button>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr>
+              <th>User</th><th>Role</th><th>Status</th>
+              <th class="num">Projects</th><th class="num">Owned</th>
+              <th class="nowrap">Last seen</th><th class="nowrap">Last login</th><th class="nowrap">Created</th>
+              <th style="text-align:right">Actions</th>
+            </tr></thead>
+            <tbody id="u-body"></tbody>
+          </table>
+        </div>
+        <div id="u-pager"></div>
+      </div>
+    </section>
+
+    <!-- Projects -->
+    <section id="pane-projects" role="tabpanel" hidden>
+      <p class="note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/><path d="M3 3l18 18"/></svg>
+        <span><strong>Project contents are never visible here</strong> — only the addresses on a project can open it. This tab shows metadata only (owner, size, activity). That is a deliberate product rule, not a missing feature.</span>
+      </p>
+      <div class="panel">
+        <div class="toolbar">
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+            <input class="inp" id="p-search" type="search" placeholder="Search project name…" spellcheck="false" aria-label="Search projects">
+          </div>
+          <select class="inp" id="p-size" aria-label="Rows per page">
+            <option value="25">25 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+          </select>
+          <label class="chk"><input type="checkbox" id="p-deleted"> Include deleted</label>
+          <div class="spacer"></div>
+          <button class="btn sm" data-act="reload-projects">Refresh</button>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr>
+              <th>Project</th><th>Owner</th>
+              <th class="num">Members</th><th class="num">Screens</th><th class="num">Modules</th><th class="num">Doc v</th>
+              <th>State</th><th class="nowrap">Last activity</th><th class="nowrap">Created</th>
+              <th style="text-align:right">Actions</th>
+            </tr></thead>
+            <tbody id="p-body"></tbody>
+          </table>
+        </div>
+        <div id="p-pager"></div>
+      </div>
+    </section>
+
+    <!-- Audit -->
+    <section id="pane-audit" role="tabpanel" hidden>
+      <div class="panel">
+        <div class="toolbar">
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/></svg>
+            <input class="inp" id="a-action" type="search" placeholder="Filter action, e.g. auth.login" spellcheck="false" list="a-action-list" aria-label="Filter by action" title="Matches the action exactly. Pick a value from the suggestion list.">
+          </div>
+          <datalist id="a-action-list"></datalist>
+          <input class="inp" id="a-entity" type="search" placeholder="Entity type…" spellcheck="false" list="a-entity-list" style="flex:0 1 170px" aria-label="Filter by entity type" title="Matches the entity type exactly. Pick a value from the suggestion list.">
+          <datalist id="a-entity-list"></datalist>
+          <select class="inp" id="a-size" aria-label="Rows per page">
+            <option value="25">25 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+          </select>
+          <button class="btn sm ghost" data-act="clear-audit">Clear filters</button>
+          <div class="spacer"></div>
+          <button class="btn sm" data-act="reload-audit">Refresh</button>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead><tr>
+              <th class="nowrap">When</th><th>Actor</th><th>Action</th><th>Entity</th><th>Summary</th><th class="nowrap">IP</th>
+            </tr></thead>
+            <tbody id="a-body"></tbody>
+          </table>
+        </div>
+        <div id="a-pager"></div>
+      </div>
+    </section>
+
+    <!-- Roles -->
+    <section id="pane-roles" role="tabpanel" hidden>
+      <div class="panel">
+        <div class="panel-head">
+          <h2>Role &amp; permission matrix</h2>
+          <div class="spacer"></div>
+          <button class="btn sm" data-act="reload-roles">Refresh</button>
+          <p class="hint">Served by the API, so it can never drift from what the server actually enforces. Project-level roles are separate and are not shown here.</p>
+        </div>
+        <div class="tablewrap">
+          <table class="matrix" id="roles-table">
+            <thead id="roles-head"></thead>
+            <tbody id="roles-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ══ dialogs ══════════════════════════════════════════════════════════ -->
+<dialog id="dlg-newuser">
+  <form id="form-newuser" novalidate>
+    <div class="dlg-head">
+      <h3>New user</h3>
+      <p>Leave the password blank and the platform generates one. It is shown once, here.</p>
+    </div>
+    <div class="dlg-body">
+      <div id="nu-err" class="formerr" hidden></div>
+      <label class="fld"><span>Email *</span>
+        <input class="inp" type="email" name="email" required spellcheck="false" autocomplete="off">
+      </label>
+      <div class="row2">
+        <label class="fld"><span>Full name</span>
+          <input class="inp" type="text" name="full_name" maxlength="160" autocomplete="off">
+        </label>
+        <label class="fld"><span>Role</span>
+          <select class="inp" name="role">
+            <option value="MEMBER" selected>Member</option>
+            <option value="ADMIN">Admin</option>
+            <option value="SUPERADMIN">Superadmin</option>
+          </select>
+        </label>
+      </div>
+      <label class="fld"><span>Password (optional)</span>
+        <input class="inp" type="text" name="password" minlength="8" maxlength="72" autocomplete="new-password" spellcheck="false" placeholder="Blank = generate one">
+        <span class="hint">8–72 characters. A generated password is flagged and must be replaced on first sign-in.</span>
+      </label>
+      <label class="chk"><input type="checkbox" name="is_active" checked> Account is active</label>
+      <label class="chk"><input type="checkbox" name="send_invite_email" checked> Send an invite email</label>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" data-act="close-dialog">Cancel</button>
+      <button class="btn primary" type="submit" id="nu-submit">Create user</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-edituser">
+  <form id="form-edituser" novalidate>
+    <div class="dlg-head">
+      <h3>Edit user</h3>
+      <p id="eu-sub"></p>
+    </div>
+    <div class="dlg-body">
+      <div id="eu-err" class="formerr" hidden></div>
+      <label class="fld"><span>Full name</span>
+        <input class="inp" type="text" name="full_name" maxlength="160" autocomplete="off">
+      </label>
+      <label class="fld"><span>Role</span>
+        <select class="inp" name="role">
+          <option value="MEMBER">Member</option>
+          <option value="ADMIN">Admin</option>
+          <option value="SUPERADMIN">Superadmin</option>
+        </select>
+      </label>
+      <label class="chk"><input type="checkbox" name="is_active"> Account is active</label>
+      <label class="chk"><input type="checkbox" name="reset_password"> Issue a new password</label>
+      <p class="hint">Deactivating the account or issuing a new password also ends every session it has open.</p>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn" type="button" data-act="close-dialog">Cancel</button>
+      <button class="btn primary" type="submit" id="eu-submit">Save changes</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-secret">
+  <div class="dlg-head">
+    <h3>Temporary password</h3>
+    <p id="sec-sub"></p>
+  </div>
+  <div class="dlg-body">
+    <div class="secret">
+      <code id="sec-pw"></code>
+      <button class="btn sm" type="button" data-act="copy-secret">Copy</button>
+    </div>
+    <p class="note" style="margin:0">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3l9 16H3z"/><path d="M12 10v4M12 16.6v.1"/></svg>
+      <span>Shown <strong>once</strong>. It is not stored in readable form and cannot be retrieved again. The account must change it on first sign-in.</span>
+    </p>
+    <p class="hint" id="sec-emailed"></p>
+  </div>
+  <div class="dlg-foot">
+    <button class="btn primary" type="button" data-act="close-dialog">Done</button>
+  </div>
+</dialog>
+
+<dialog id="dlg-confirm">
+  <div class="dlg-head">
+    <h3 id="cf-title">Are you sure?</h3>
+    <p id="cf-body"></p>
+  </div>
+  <div class="dlg-body" id="cf-extra" style="padding-top:0"></div>
+  <div class="dlg-foot">
+    <button class="btn" type="button" data-cf="no">Cancel</button>
+    <button class="btn danger" type="button" data-cf="yes" id="cf-yes">Delete</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+/* =====================================================================
+   Prompt Studio operator panel — one file, no build step, no network
+   dependency beyond this API. Vanilla JS only.
+   ===================================================================== */
+
+const API = "/api/v1";
+const K = { ACCESS: "ps.admin.access", REFRESH: "ps.admin.refresh", THEME: "ps.admin.theme", TAB: "ps.admin.tab" };
+const ROLES = ["SUPERADMIN", "ADMIN", "MEMBER"];
+
+/* ── tiny helpers ─────────────────────────────────────────────────────── */
+const $ = (sel, root) => (root || document).querySelector(sel);
+const $$ = (sel, root) => Array.prototype.slice.call((root || document).querySelectorAll(sel));
+
+const ESCAPES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+/** Escape anything before it goes into innerHTML. Emails, names and audit
+ *  summaries are all untrusted input; this is used on every injected value. */
+function esc(v) {
+  if (v === null || v === undefined) return "";
+  return String(v).replace(/[&<>"']/g, (c) => ESCAPES[c]);
+}
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* private mode / blocked */ } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
+};
+
+function debounce(fn, ms) {
+  let t = 0;
+  return function () {
+    const args = arguments;
+    clearTimeout(t);
+    t = setTimeout(() => fn.apply(null, args), ms);
+  };
+}
+
+function fmtDate(v) {
+  if (!v) return "—";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "—";
+  try {
+    return d.toLocaleString(undefined, {
+      year: "numeric", month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
+  } catch (e) { return d.toISOString(); }
+}
+function fmtRel(v) {
+  if (!v) return "";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "";
+  const s = (Date.now() - d.getTime()) / 1000;
+  if (s < 0) return "just now";
+  if (s < 45) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  if (s < 2592000) return Math.floor(s / 86400) + "d ago";
+  return fmtDate(v);
+}
+function num(n) {
+  const x = Number(n);
+  if (!isFinite(x)) return "—";
+  try { return x.toLocaleString(); } catch (e) { return String(x); }
+}
+function initials(name, email) {
+  const src = (name || "").trim() || (email || "").trim();
+  if (!src) return "?";
+  const parts = src.split(/[\s._@-]+/).filter(Boolean);
+  if (!parts.length) return src.slice(0, 1).toUpperCase();
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+function safeColor(c) {
+  return /^#(?:[0-9a-fA-F]{3}){1,2}$/.test(String(c || "")) ? String(c) : "#6b7280";
+}
+
+/* ── toasts ───────────────────────────────────────────────────────────── */
+function toast(kind, title, msg) {
+  const el = document.createElement("div");
+  el.className = "toast " + (kind || "info");
+  el.innerHTML =
+    '<div class="tbody"><span class="ttl">' + esc(title) + "</span>" +
+    (msg ? '<span class="tmsg">' + esc(msg) + "</span>" : "") +
+    '</div><button class="tx" type="button" aria-label="Dismiss">&times;</button>';
+  el.querySelector(".tx").addEventListener("click", () => el.remove());
+  $("#toasts").appendChild(el);
+  setTimeout(() => el.remove(), kind === "err" ? 7000 : 4200);
+}
+
+/* ── loading bar (a loading state on every fetch) ─────────────────────── */
+let inflight = 0;
+function busy(on) {
+  inflight += on ? 1 : -1;
+  if (inflight < 0) inflight = 0;
+  $("#loadbar").hidden = inflight === 0;
+}
+
+/* ── API layer: envelope + refresh-once-then-replay ───────────────────── */
+class ApiError extends Error {
+  constructor(message, status, errors) {
+    super(message || "Request failed");
+    this.status = status || 0;
+    this.errors = Array.isArray(errors) ? errors : [];
+  }
+  /** message plus any field errors, for inline display. */
+  get detail() {
+    if (!this.errors.length) return "";
+    return this.errors
+      .map((e) => (e && e.field ? e.field + ": " : "") + ((e && e.message) || ""))
+      .filter(Boolean)
+      .join("\n");
+  }
+}
+
+let refreshPromise = null;
+
+async function doRefresh() {
+  if (refreshPromise) return refreshPromise;
+  const rt = store.get(K.REFRESH);
+  if (!rt) return Promise.resolve(false);
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(API + "/auth/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ refresh_token: rt }),
+      });
+      let env = null;
+      try { env = await res.json(); } catch (e) { env = null; }
+      if (!res.ok || !env || env.success !== true || !env.data || !env.data.access_token) return false;
+      store.set(K.ACCESS, env.data.access_token);
+      // The server rotates the refresh token — keep the new one or the next
+      // refresh fails against a token that has already been spent.
+      if (env.data.refresh_token) store.set(K.REFRESH, env.data.refresh_token);
+      return true;
+    } catch (e) {
+      return false;
+    } finally {
+      setTimeout(() => { refreshPromise = null; }, 0);
+    }
+  })();
+  return refreshPromise;
+}
+
+async function api(path, opts) {
+  opts = opts || {};
+  const method = opts.method || "GET";
+  const auth = opts.auth !== false;
+  const hasBody = opts.body !== undefined && opts.body !== null;
+
+  async function once(isRetry) {
+    const headers = { Accept: "application/json" };
+    if (hasBody) headers["Content-Type"] = "application/json";
+    if (auth) {
+      const tok = store.get(K.ACCESS);
+      if (tok) headers["Authorization"] = "Bearer " + tok;
+    }
+    let res;
+    try {
+      res = await fetch(API + path, {
+        method,
+        headers,
+        body: hasBody ? JSON.stringify(opts.body) : undefined,
+        signal: opts.signal,
+      });
+    } catch (e) {
+      if (e && e.name === "AbortError") throw e;
+      throw new ApiError("Could not reach the API. Is the server still running?", 0, []);
+    }
+
+    let env = null;
+    if (res.status !== 204) {
+      try { env = await res.json(); } catch (e) { env = null; }
+    }
+
+    if (res.status === 401 && auth && !isRetry) {
+      const ok = await doRefresh();
+      if (ok) return once(true);
+      hardSignOut("Your session expired. Please sign in again.");
+      throw new ApiError("Session expired", 401, []);
+    }
+
+    if (!res.ok || (env && env.success === false)) {
+      const msg = (env && env.message) || res.statusText || ("HTTP " + res.status);
+      throw new ApiError(msg, res.status, env && env.errors);
+    }
+    return env ? env.data : null;
+  }
+
+  busy(true);
+  try { return await once(false); }
+  finally { busy(false); }
+}
+
+/* ── app state ────────────────────────────────────────────────────────── */
+const state = {
+  me: null,
+  tab: "dashboard",
+  users: { page: 1, size: 25, search: "", role: "", is_active: "", sort: "recent", seq: 0, byId: {} },
+  projects: { page: 1, size: 25, search: "", include_deleted: false, seq: 0 },
+  audit: { page: 1, size: 25, action: "", entity_type: "", seq: 0 },
+};
+const isSuperadmin = () => !!state.me && (state.me.role === "SUPERADMIN" || state.me.is_superuser === true);
+const isAdmin = () =>
+  !!state.me && (state.me.role === "ADMIN" || state.me.role === "SUPERADMIN" || state.me.is_superuser === true);
+
+function qs(obj) {
+  const parts = [];
+  Object.keys(obj).forEach((k) => {
+    const v = obj[k];
+    if (v === "" || v === null || v === undefined) return;
+    parts.push(encodeURIComponent(k) + "=" + encodeURIComponent(v));
+  });
+  return parts.length ? "?" + parts.join("&") : "";
+}
+
+/* ── shared table chrome ──────────────────────────────────────────────── */
+function stateRow(cols, kind, title, sub) {
+  const inner =
+    kind === "loading"
+      ? '<span class="spin"></span> <span style="margin-left:6px">Loading…</span>'
+      : "<strong>" + esc(title) + "</strong>" + (sub ? esc(sub) : "");
+  return '<tr><td class="state-cell" colspan="' + cols + '">' + inner + "</td></tr>";
+}
+
+function pager(scope, p) {
+  if (!p) return "";
+  const total = p.total || 0;
+  const pages = p.pages || 0;
+  const page = p.page || 1;
+  const size = p.size || 25;
+  const from = total ? (page - 1) * size + 1 : 0;
+  const to = Math.min(page * size, total);
+  const info = total
+    ? num(from) + "–" + num(to) + " of " + num(total) + (pages > 1 ? "  ·  page " + page + " / " + pages : "")
+    : "No results";
+  const btn = (label, target, on) =>
+    '<button class="btn sm" data-act="page" data-scope="' + scope + '" data-page="' + target + '"' +
+    (on ? "" : " disabled") + ">" + label + "</button>";
+  return (
+    '<div class="pager"><span class="pager-info">' + esc(info) + "</span>" +
+    '<div class="pager-btns">' +
+    btn("&laquo; First", 1, p.has_prev) +
+    btn("&lsaquo; Prev", page - 1, p.has_prev) +
+    btn("Next &rsaquo;", page + 1, p.has_next) +
+    btn("Last &raquo;", pages, p.has_next) +
+    "</div></div>"
+  );
+}
+
+function roleBadge(role) {
+  const cls = role === "SUPERADMIN" ? "acc" : role === "ADMIN" ? "warn" : "";
+  return '<span class="badge ' + cls + '">' + esc(role || "—") + "</span>";
+}
+function dateCell(v, extraClass) {
+  const rel = fmtRel(v);
+  return (
+    '<td class="nowrap ' + (extraClass || "") + '" title="' + esc(fmtDate(v)) + '">' +
+    (rel ? esc(rel) : '<span class="sec">—</span>') + "</td>"
+  );
+}
+
+/* ══ Dashboard ════════════════════════════════════════════════════════ */
+const STAT_GROUPS = [
+  {
+    title: "Accounts",
+    tiles: [
+      ["users_total", "Users", "accent", "every account on the platform"],
+      ["users_active", "Active", "ok", "not deactivated"],
+      ["users_pending_invite", "Pending invite", "warn", "invited, never signed in"],
+      ["admins", "Admins", "", "ADMIN or SUPERADMIN"],
+    ],
+  },
+  {
+    title: "Projects",
+    tiles: [
+      ["projects_total", "Projects", "accent", "live projects"],
+      ["projects_archived", "Archived", "warn", "hidden from owners' lists"],
+      ["projects_deleted", "Deleted", "bad", "soft-deleted"],
+      ["screens_total", "Screens", "", "across every project"],
+    ],
+  },
+  {
+    title: "Recent activity",
+    tiles: [
+      ["signups_last_7_days", "Signups · 7d", "accent", "accounts created this week"],
+      ["active_last_24_hours", "Active · 24h", "ok", "seen in the last day"],
+    ],
+  },
+];
+
+function renderStats(s, loading) {
+  const out = STAT_GROUPS.map((g) => {
+    const tiles = g.tiles
+      .map(([key, label, tone, desc]) => {
+        const val = loading ? "…" : s && s[key] !== undefined && s[key] !== null ? num(s[key]) : "—";
+        return (
+          '<div class="tile ' + (loading ? "skel" : tone) + '">' +
+          '<div class="k">' + esc(label) + "</div>" +
+          '<div class="v">' + esc(val) + "</div>" +
+          '<div class="d">' + esc(desc) + "</div></div>"
+        );
+      })
+      .join("");
+    return '<div class="group"><h3 class="group-title">' + esc(g.title) + '</h3><div class="statgrid">' + tiles + "</div></div>";
+  }).join("");
+  $("#stats-out").innerHTML = out;
+}
+
+async function loadStats() {
+  renderStats(null, true);
+  try {
+    const data = await api("/admin/stats");
+    renderStats(data, false);
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    $("#stats-out").innerHTML =
+      '<div class="panel"><div class="panel-body" style="text-align:center;color:var(--muted)">' +
+      "<strong>Could not load stats</strong><br>" + esc(e.message) +
+      '<div style="margin-top:10px"><button class="btn sm" data-act="reload-stats">Try again</button></div></div></div>';
+    toast("err", "Stats failed", e.message);
+  }
+}
+
+/* ══ Users ════════════════════════════════════════════════════════════ */
+const U_COLS = 9;
+
+function userRow(u) {
+  const name = u.full_name || "";
+  const del = isSuperadmin()
+    ? '<button class="btn sm danger-soft" data-act="del-user" data-id="' + esc(u.id) + '" data-email="' + esc(u.email) + '">Delete</button>'
+    : "";
+  const verified = u.email_verified_at
+    ? '<span class="badge ok" title="' + esc(fmtDate(u.email_verified_at)) + '">Verified</span>'
+    : '<span class="badge warn">Unverified</span>';
+  const status = u.is_active
+    ? '<span class="badge ok">Active</span>'
+    : '<span class="badge bad">Inactive</span>';
+  const sup = u.is_superuser ? '<span class="badge acc">Superuser</span>' : "";
+  return (
+    "<tr>" +
+    '<td><div class="cellflex">' +
+    '<span class="avatar" style="background:' + esc(safeColor(u.accent_color)) + '">' + esc(initials(name, u.email)) + "</span>" +
+    '<span class="tight" style="min-width:0">' +
+    '<span class="pri trunc" style="display:block">' + esc(name || u.email) + "</span>" +
+    (name ? '<span class="sec trunc" style="display:block">' + esc(u.email) + "</span>" : '<span class="sec id">' + esc(u.id) + "</span>") +
+    "</span></div></td>" +
+    "<td>" + roleBadge(u.role) + "</td>" +
+    '<td><div class="badges">' + status + verified + sup + "</div></td>" +
+    '<td class="num">' + num(u.project_count) + "</td>" +
+    '<td class="num">' + num(u.owned_project_count) + "</td>" +
+    dateCell(u.last_seen_at) +
+    dateCell(u.last_login_at) +
+    dateCell(u.created_at) +
+    '<td class="acts">' +
+    '<button class="btn sm" data-act="edit-user" data-id="' + esc(u.id) + '">Edit</button>' +
+    del +
+    "</td></tr>"
+  );
+}
+
+async function loadUsers() {
+  const s = state.users;
+  const seq = ++s.seq;
+  $("#u-body").innerHTML = stateRow(U_COLS, "loading");
+  $("#u-pager").innerHTML = "";
+  try {
+    const page = await api(
+      "/admin/users" +
+        qs({ page: s.page, size: s.size, search: s.search, role: s.role, is_active: s.is_active, sort: s.sort })
+    );
+    if (seq !== s.seq) return; // a newer request already answered
+    const items = (page && page.items) || [];
+    if (!items.length) {
+      const filtered = s.search || s.role || s.is_active !== "";
+      $("#u-body").innerHTML = stateRow(
+        U_COLS, "empty",
+        filtered ? "No users match those filters" : "No users yet",
+        filtered ? "Clear the search or filters to see everyone." : "Create the first account with “New user”."
+      );
+    } else {
+      s.byId = {};
+      items.forEach((u) => { s.byId[u.id] = u; });
+      $("#u-body").innerHTML = items.map(userRow).join("");
+    }
+    $("#u-pager").innerHTML = pager("users", page);
+  } catch (e) {
+    if (e.name === "AbortError" || seq !== s.seq) return;
+    $("#u-body").innerHTML = stateRow(U_COLS, "empty", "Could not load users", e.message);
+    toast("err", "Users failed", e.message);
+  }
+}
+
+/* ══ Projects ═════════════════════════════════════════════════════════ */
+const P_COLS = 10;
+
+function projectRow(p) {
+  const badges =
+    (p.is_deleted ? '<span class="badge bad">Deleted</span>' : "") +
+    (p.is_archived ? '<span class="badge warn">Archived</span>' : "") +
+    (!p.is_deleted && !p.is_archived ? '<span class="badge ok">Live</span>' : "");
+  const del = isSuperadmin()
+    ? '<button class="btn sm danger-soft" data-act="del-project" data-id="' + esc(p.id) + '" data-name="' + esc(p.name) + '">Delete</button>'
+    : '<span class="sec">—</span>';
+  return (
+    "<tr>" +
+    '<td><span class="pri trunc" style="display:block">' + esc(p.name || "(untitled)") + "</span>" +
+    '<span class="sec id">' + esc(p.id) + "</span></td>" +
+    '<td class="trunc">' + (p.owner_email ? esc(p.owner_email) : '<span class="sec">no owner</span>') + "</td>" +
+    '<td class="num">' + num(p.member_count) + "</td>" +
+    '<td class="num">' + num(p.screen_count) + "</td>" +
+    '<td class="num">' + num(p.module_count) + "</td>" +
+    '<td class="num sec">v' + esc(p.doc_version) + "</td>" +
+    '<td><div class="badges">' + badges + "</div></td>" +
+    dateCell(p.last_activity_at) +
+    dateCell(p.created_at) +
+    '<td class="acts">' + del + "</td></tr>"
+  );
+}
+
+async function loadProjects() {
+  const s = state.projects;
+  const seq = ++s.seq;
+  $("#p-body").innerHTML = stateRow(P_COLS, "loading");
+  $("#p-pager").innerHTML = "";
+  try {
+    const page = await api(
+      "/admin/projects" +
+        qs({ page: s.page, size: s.size, search: s.search, include_deleted: s.include_deleted ? "true" : "" })
+    );
+    if (seq !== s.seq) return;
+    const items = (page && page.items) || [];
+    if (!items.length) {
+      $("#p-body").innerHTML = stateRow(
+        P_COLS, "empty",
+        s.search ? "No projects match that search" : "No projects yet",
+        s.search ? "Try a shorter term, or clear the search." : "Projects appear here as soon as someone creates one."
+      );
+    } else {
+      $("#p-body").innerHTML = items.map(projectRow).join("");
+    }
+    $("#p-pager").innerHTML = pager("projects", page);
+  } catch (e) {
+    if (e.name === "AbortError" || seq !== s.seq) return;
+    $("#p-body").innerHTML = stateRow(P_COLS, "empty", "Could not load projects", e.message);
+    toast("err", "Projects failed", e.message);
+  }
+}
+
+/* ══ Audit ════════════════════════════════════════════════════════════ */
+const A_COLS = 6;
+const seenActions = new Set();
+const seenEntities = new Set();
+let vocabLoaded = false;
+
+/** The server matches `action` and `entity_type` exactly, so a free-text box is
+ *  only usable with a real vocabulary behind it. Sample one page, once, to fill
+ *  the suggestion lists; failures are ignored because this is a convenience. */
+async function loadFilterVocabulary() {
+  if (vocabLoaded) return;
+  vocabLoaded = true;
+  try {
+    const page = await api("/admin/audit" + qs({ page: 1, size: 200 }));
+    ((page && page.items) || []).forEach((r) => {
+      if (r.action) seenActions.add(r.action);
+      if (r.entity_type) seenEntities.add(r.entity_type);
+    });
+    refreshDatalist("a-action-list", seenActions);
+    refreshDatalist("a-entity-list", seenEntities);
+  } catch (e) { /* suggestions stay limited to whatever rows are on screen */ }
+}
+
+function refreshDatalist(id, set) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.innerHTML = Array.from(set).sort().map((v) => '<option value="' + esc(v) + '"></option>').join("");
+}
+
+function auditRow(r) {
+  if (r.action) seenActions.add(r.action);
+  if (r.entity_type) seenEntities.add(r.entity_type);
+  const entity = r.entity_type
+    ? '<span class="badge">' + esc(r.entity_type) + "</span>" +
+      (r.entity_id ? ' <span class="id" title="' + esc(r.entity_id) + '">' + esc(String(r.entity_id).slice(0, 8)) + "</span>" : "")
+    : '<span class="sec">—</span>';
+  return (
+    "<tr>" +
+    '<td class="nowrap sec" title="' + esc(fmtDate(r.created_at)) + '">' + esc(fmtDate(r.created_at)) + "</td>" +
+    '<td class="trunc">' + (r.actor_email ? esc(r.actor_email) : '<span class="sec">system</span>') + "</td>" +
+    '<td class="nowrap"><code class="id" style="font-size:11.5px;color:var(--text)">' + esc(r.action) + "</code></td>" +
+    "<td>" + entity + "</td>" +
+    '<td class="trunc" title="' + esc(r.summary) + '">' + (r.summary ? esc(r.summary) : '<span class="sec">—</span>') + "</td>" +
+    '<td class="nowrap sec">' + (r.ip_address ? esc(r.ip_address) : "—") + "</td>" +
+    "</tr>"
+  );
+}
+
+async function loadAudit() {
+  const s = state.audit;
+  const seq = ++s.seq;
+  $("#a-body").innerHTML = stateRow(A_COLS, "loading");
+  $("#a-pager").innerHTML = "";
+  try {
+    const page = await api(
+      "/admin/audit" + qs({ page: s.page, size: s.size, action: s.action, entity_type: s.entity_type })
+    );
+    if (seq !== s.seq) return;
+    const items = (page && page.items) || [];
+    if (!items.length) {
+      const filtered = s.action || s.entity_type;
+      $("#a-body").innerHTML = stateRow(
+        A_COLS, "empty",
+        filtered ? "No entries match those filters" : "The audit trail is empty",
+        filtered ? "Action and entity type must match exactly — pick one from the suggestions." : "Administrative actions are recorded here as they happen."
+      );
+    } else {
+      $("#a-body").innerHTML = items.map(auditRow).join("");
+      refreshDatalist("a-action-list", seenActions);
+      refreshDatalist("a-entity-list", seenEntities);
+    }
+    $("#a-pager").innerHTML = pager("audit", page);
+    loadFilterVocabulary();
+  } catch (e) {
+    if (e.name === "AbortError" || seq !== s.seq) return;
+    $("#a-body").innerHTML = stateRow(A_COLS, "empty", "Could not load the audit trail", e.message);
+    toast("err", "Audit failed", e.message);
+  }
+}
+
+/* ══ Roles ════════════════════════════════════════════════════════════ */
+async function loadRoles() {
+  $("#roles-head").innerHTML = "";
+  $("#roles-body").innerHTML = stateRow(4, "loading");
+  try {
+    const data = await api("/admin/roles");
+    const rows = Array.isArray(data) ? data : [];
+    if (!rows.length) {
+      $("#roles-body").innerHTML = stateRow(4, "empty", "No roles returned", "The API returned an empty role list.");
+      return;
+    }
+    // Strongest role first, whatever order the server used.
+    const order = (r) => { const i = ROLES.indexOf(r.role); return i === -1 ? 99 : i; };
+    rows.sort((a, b) => order(a) - order(b));
+
+    const perms = new Set();
+    rows.forEach((r) => (r.permissions || []).forEach((p) => perms.add(p)));
+    const all = Array.from(perms).sort();
+
+    $("#roles-head").innerHTML =
+      "<tr><th>Permission</th>" +
+      rows.map((r) => '<th class="mark" style="text-align:center">' + esc(r.role) + "</th>").join("") +
+      "</tr>";
+
+    if (!all.length) {
+      $("#roles-body").innerHTML = stateRow(rows.length + 1, "empty", "No permissions defined", "");
+      return;
+    }
+
+    let html = "";
+    let group = null;
+    all.forEach((p) => {
+      const g = p.indexOf(".") > -1 ? p.slice(0, p.indexOf(".")) : "general";
+      if (g !== group) {
+        group = g;
+        html += '<tr class="grouprow"><td colspan="' + (rows.length + 1) + '">' + esc(group) + "</td></tr>";
+      }
+      html +=
+        '<tr><td class="perm">' + esc(p) + "</td>" +
+        rows
+          .map((r) => {
+            const has = (r.permissions || []).indexOf(p) !== -1;
+            return '<td class="mark ' + (has ? "yes" : "no") + '" title="' + esc(r.role + (has ? " has " : " does not have ") + p) + '">' +
+              (has ? "&#10003;" : "&middot;") + "</td>";
+          })
+          .join("") +
+        "</tr>";
+    });
+    // Footer-ish summary row.
+    html +=
+      '<tr class="grouprow"><td>total</td>' +
+      rows.map((r) => '<td class="mark" style="font-size:11px">' + ((r.permissions || []).length) + "</td>").join("") +
+      "</tr>";
+    $("#roles-body").innerHTML = html;
+  } catch (e) {
+    if (e.name === "AbortError") return;
+    $("#roles-body").innerHTML = stateRow(4, "empty", "Could not load roles", e.message);
+    toast("err", "Roles failed", e.message);
+  }
+}
+
+/* ══ dialogs ══════════════════════════════════════════════════════════ */
+function openDlg(el) { try { el.showModal(); } catch (e) { el.setAttribute("open", ""); } }
+function closeDlg(el) { try { el.close(); } catch (e) { el.removeAttribute("open"); } }
+
+function showFormError(box, err) {
+  if (!err) { box.hidden = true; box.innerHTML = ""; return; }
+  const list = (err.errors || [])
+    .map((e) => "<li>" + esc(((e && e.field) ? e.field + ": " : "") + ((e && e.message) || "")) + "</li>")
+    .join("");
+  box.innerHTML = esc(err.message) + (list ? "<ul>" + list + "</ul>" : "");
+  box.hidden = false;
+}
+
+/** Generic confirm. Resolves true/false. */
+function confirmDlg(opts) {
+  const dlg = $("#dlg-confirm");
+  $("#cf-title").textContent = opts.title || "Are you sure?";
+  $("#cf-body").textContent = opts.body || "";
+  $("#cf-extra").innerHTML = opts.extra || "";
+  $("#cf-extra").hidden = !opts.extra;
+  const yes = $("#cf-yes");
+  yes.textContent = opts.confirmLabel || "Delete";
+  yes.className = "btn " + (opts.danger === false ? "primary" : "danger");
+  return new Promise((resolve) => {
+    function done(v) {
+      dlg.removeEventListener("click", onClick);
+      dlg.removeEventListener("close", onClose);
+      closeDlg(dlg);
+      resolve(v);
+    }
+    function onClick(ev) {
+      const b = ev.target && typeof ev.target.closest === "function" ? ev.target.closest("[data-cf]") : null;
+      if (!b) return;
+      done(b.getAttribute("data-cf") === "yes");
+    }
+    function onClose() { done(false); }
+    dlg.addEventListener("click", onClick);
+    dlg.addEventListener("close", onClose);
+    openDlg(dlg);
+  });
+}
+
+/** The one place a generated password is ever shown. */
+function showSecret(result) {
+  if (!result || !result.temporary_password) return false;
+  $("#sec-sub").textContent = "For " + (result.email || "the new account") + ".";
+  $("#sec-pw").textContent = result.temporary_password;
+  $("#sec-emailed").textContent = result.emailed
+    ? "A copy was emailed to the account."
+    : "No email was sent — pass it on yourself.";
+  openDlg($("#dlg-secret"));
+  return true;
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch (e) { /* fall through to the legacy path */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    ta.remove();
+    return ok;
+  } catch (e) { return false; }
+}
+
+/* ── new user ─────────────────────────────────────────────────────────── */
+$("#form-newuser").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = ev.currentTarget;
+  const box = $("#nu-err");
+  showFormError(box, null);
+  const email = f.email.value.trim();
+  if (!email) { showFormError(box, { message: "An email address is required.", errors: [] }); return; }
+  const pw = f.password.value;
+  if (pw && (pw.length < 8 || pw.length > 72)) {
+    showFormError(box, { message: "A password must be 8–72 characters.", errors: [] });
+    return;
+  }
+  const body = {
+    email,
+    full_name: f.full_name.value.trim(),
+    role: f.role.value,
+    is_active: f.is_active.checked,
+    send_invite_email: f.send_invite_email.checked,
+  };
+  if (pw) body.password = pw;
+
+  const btn = $("#nu-submit");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Creating…';
+  try {
+    const result = await api("/admin/users", { method: "POST", body });
+    closeDlg($("#dlg-newuser"));
+    f.reset();
+    toast("ok", "User created", email);
+    state.users.page = 1;
+    loadUsers();
+    loadStats();
+    showSecret(result);
+  } catch (e) {
+    showFormError(box, e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Create user";
+  }
+});
+
+/* ── edit user ────────────────────────────────────────────────────────── */
+let editing = null;
+
+function openEditUser(id) {
+  const u = state.users.byId[id];
+  if (!u) { toast("err", "That row is out of date", "Refresh the list and try again."); return; }
+  editing = { id: id, role: u.role, is_active: !!u.is_active, full_name: u.full_name || "" };
+  const f = $("#form-edituser");
+  showFormError($("#eu-err"), null);
+  f.full_name.value = u.full_name || "";
+  f.full_name.placeholder = "(no name set)";
+  f.role.value = ROLES.indexOf(u.role) !== -1 ? u.role : "MEMBER";
+  f.is_active.checked = !!u.is_active;
+  f.reset_password.checked = false;
+  $("#eu-sub").textContent = u.email || id;
+  openDlg($("#dlg-edituser"));
+  setTimeout(() => { try { f.full_name.focus(); } catch (e) {} }, 30);
+}
+
+$("#form-edituser").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  if (!editing) return;
+  const f = ev.currentTarget;
+  const box = $("#eu-err");
+  showFormError(box, null);
+
+  const body = {};
+  const nm = f.full_name.value.trim();
+  if (nm !== (editing.full_name || "").trim()) body.full_name = nm;
+  if (f.role.value !== editing.role) body.role = f.role.value;
+  if (f.is_active.checked !== editing.is_active) body.is_active = f.is_active.checked;
+  if (f.reset_password.checked) body.reset_password = true;
+
+  if (!Object.keys(body).length) {
+    showFormError(box, { message: "Nothing to change.", errors: [] });
+    return;
+  }
+
+  const btn = $("#eu-submit");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Saving…';
+  try {
+    const result = await api("/admin/users/" + encodeURIComponent(editing.id), { method: "PATCH", body });
+    closeDlg($("#dlg-edituser"));
+    toast("ok", "User updated", (result && result.email) || "");
+    loadUsers();
+    if (body.role !== undefined || body.is_active !== undefined) loadStats();
+    showSecret(result);
+  } catch (e) {
+    showFormError(box, e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Save changes";
+  }
+});
+
+/* ── destructive actions ──────────────────────────────────────────────── */
+async function deleteUser(id, email) {
+  const ok = await confirmDlg({
+    title: "Delete this account?",
+    body: email + " will be removed along with its sessions. This cannot be undone.",
+    confirmLabel: "Delete user",
+  });
+  if (!ok) return;
+  try {
+    await api("/admin/users/" + encodeURIComponent(id), { method: "DELETE" });
+    toast("ok", "User deleted", email);
+    loadUsers();
+    loadStats();
+  } catch (e) {
+    toast("err", "Delete failed", e.message + (e.detail ? " — " + e.detail : ""));
+  }
+}
+
+async function deleteProject(id, name) {
+  const ok = await confirmDlg({
+    title: "Delete this project?",
+    body: "“" + name + "” will be deleted. Its members lose access immediately.",
+    confirmLabel: "Delete project",
+  });
+  if (!ok) return;
+  try {
+    await api("/admin/projects/" + encodeURIComponent(id), { method: "DELETE" });
+    toast("ok", "Project deleted", name);
+    loadProjects();
+    loadStats();
+  } catch (e) {
+    toast("err", "Delete failed", e.message + (e.detail ? " — " + e.detail : ""));
+  }
+}
+
+/* ══ auth + views ═════════════════════════════════════════════════════ */
+function showView(which) {
+  ["boot", "login", "denied", "app"].forEach((v) => {
+    $("#view-" + v).hidden = v !== which;
+  });
+}
+
+function hardSignOut(msg) {
+  store.del(K.ACCESS);
+  store.del(K.REFRESH);
+  state.me = null;
+  showView("login");
+  if (msg) toast("info", "Signed out", msg);
+}
+
+async function signOut() {
+  const rt = store.get(K.REFRESH);
+  try {
+    if (store.get(K.ACCESS)) await api("/auth/logout", { method: "POST", body: { refresh_token: rt || null } });
+  } catch (e) {
+    // A failed logout still clears this browser — the token is gone locally.
+  }
+  hardSignOut(null);
+  toast("ok", "Signed out", "");
+}
+
+async function loadMe() {
+  const me = await api("/users/me");
+  state.me = me;
+  return me;
+}
+
+function enterApp(me) {
+  const admin = me.role === "ADMIN" || me.role === "SUPERADMIN" || me.is_superuser === true;
+  if (!admin) {
+    $("#denied-email").textContent = me.email || "";
+    showView("denied");
+    return;
+  }
+  $("#who-name").textContent = me.full_name || me.email || "";
+  $("#who-name").title = me.email || "";
+  $("#who-role").textContent = me.role + (me.is_superuser ? " · superuser" : "");
+  $("#who-dot").style.background = safeColor(me.accent_color);
+  showView("app");
+  const saved = store.get(K.TAB);
+  selectTab(saved && Object.prototype.hasOwnProperty.call(LOADERS, saved) ? saved : "dashboard");
+}
+
+$("#login-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const f = ev.currentTarget;
+  const box = $("#login-err");
+  showFormError(box, null);
+  const btn = $("#login-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Signing in…';
+  try {
+    const data = await api("/auth/login", {
+      method: "POST",
+      auth: false,
+      body: { email: f.email.value.trim(), password: f.password.value },
+    });
+    if (!data || !data.access_token) throw new ApiError("The API did not return a token.", 0, []);
+    store.set(K.ACCESS, data.access_token);
+    if (data.refresh_token) store.set(K.REFRESH, data.refresh_token);
+    f.password.value = "";
+    // The role gate is decided by /users/me, not by the login payload.
+    let me;
+    try { me = await loadMe(); }
+    catch (err) { me = data.user || null; state.me = me; }
+    if (!me) throw new ApiError("Signed in, but the account could not be loaded.", 0, []);
+    enterApp(me);
+  } catch (e) {
+    showFormError(box, e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Sign in";
+  }
+});
+
+/* ══ tabs ═════════════════════════════════════════════════════════════ */
+const LOADERS = {
+  dashboard: loadStats,
+  users: loadUsers,
+  projects: loadProjects,
+  audit: loadAudit,
+  roles: loadRoles,
+};
+const loadedOnce = {};
+
+function selectTab(tab) {
+  if (!LOADERS[tab]) tab = "dashboard";
+  state.tab = tab;
+  store.set(K.TAB, tab);
+  $$(".tab").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  Object.keys(LOADERS).forEach((t) => { $("#pane-" + t).hidden = t !== tab; });
+  if (!loadedOnce[tab]) { loadedOnce[tab] = true; LOADERS[tab](); }
+}
+
+$$(".tab").forEach((b) => b.addEventListener("click", () => selectTab(b.dataset.tab)));
+
+/* ══ theme ════════════════════════════════════════════════════════════ */
+const THEME_ICONS = { system: "◐", light: "☀", dark: "☾" };
+function currentTheme() {
+  const t = store.get(K.THEME);
+  return t === "light" || t === "dark" ? t : "system";
+}
+function applyTheme(t) {
+  if (t === "light" || t === "dark") {
+    document.documentElement.setAttribute("data-theme", t);
+    store.set(K.THEME, t);
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+    store.del(K.THEME);
+  }
+  const label = t === "system" ? "System" : t === "light" ? "Light" : "Dark";
+  const icon = THEME_ICONS[t] || "◐";
+  const i = $("#theme-icon"); if (i) i.textContent = icon;
+  const l2 = $("#theme-label-2"); if (l2) l2.textContent = label;
+  const l1 = $("#theme-label-1"); if (l1) l1.textContent = icon + " " + label;
+  $$('[data-act="theme"]').forEach((b) => b.setAttribute("title", "Theme: " + label + " — click to change"));
+}
+function cycleTheme() {
+  const order = ["system", "light", "dark"];
+  applyTheme(order[(order.indexOf(currentTheme()) + 1) % order.length]);
+}
+applyTheme(currentTheme());
+
+/* ══ global delegated events ══════════════════════════════════════════ */
+document.addEventListener("click", async (ev) => {
+  const t = ev.target;
+  if (!t || typeof t.closest !== "function") return;
+  const el = t.closest("[data-act]");
+  if (!el) return;
+  const act = el.getAttribute("data-act");
+
+  if (act === "theme") { cycleTheme(); return; }
+  if (act === "signout") { signOut(); return; }
+  if (act === "close-dialog") { const d = el.closest("dialog"); if (d) closeDlg(d); return; }
+  if (act === "reload-stats") { loadStats(); return; }
+  if (act === "reload-projects") { loadProjects(); return; }
+  if (act === "reload-audit") { loadAudit(); return; }
+  if (act === "reload-roles") { loadRoles(); return; }
+  if (act === "new-user") {
+    const f = $("#form-newuser");
+    f.reset();
+    f.is_active.checked = true;
+    f.send_invite_email.checked = true;
+    showFormError($("#nu-err"), null);
+    openDlg($("#dlg-newuser"));
+    setTimeout(() => { try { f.email.focus(); } catch (e) {} }, 30);
+    return;
+  }
+  if (act === "edit-user") { openEditUser(el.getAttribute("data-id")); return; }
+  if (act === "del-user") { deleteUser(el.getAttribute("data-id"), el.getAttribute("data-email")); return; }
+  if (act === "del-project") { deleteProject(el.getAttribute("data-id"), el.getAttribute("data-name")); return; }
+  if (act === "clear-audit") {
+    $("#a-action").value = ""; $("#a-entity").value = "";
+    state.audit.action = ""; state.audit.entity_type = ""; state.audit.page = 1;
+    loadAudit();
+    return;
+  }
+  if (act === "copy-secret") {
+    const ok = await copyText($("#sec-pw").textContent || "");
+    toast(ok ? "ok" : "err", ok ? "Copied" : "Copy failed", ok ? "The password is on your clipboard." : "Select it and copy manually.");
+    return;
+  }
+  if (act === "page") {
+    const scope = el.getAttribute("data-scope");
+    const p = parseInt(el.getAttribute("data-page"), 10);
+    if (!scope || !isFinite(p) || p < 1) return;
+    state[scope].page = p;
+    LOADERS[scope]();
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) { window.scrollTo(0, 0); }
+    return;
+  }
+});
+
+/* ── filter wiring ────────────────────────────────────────────────────── */
+const dUsers = debounce(() => { state.users.page = 1; loadUsers(); }, 300);
+$("#u-search").addEventListener("input", (e) => { state.users.search = e.target.value.trim(); dUsers(); });
+$("#u-role").addEventListener("change", (e) => { state.users.role = e.target.value; state.users.page = 1; loadUsers(); });
+$("#u-active").addEventListener("change", (e) => { state.users.is_active = e.target.value; state.users.page = 1; loadUsers(); });
+$("#u-sort").addEventListener("change", (e) => { state.users.sort = e.target.value; state.users.page = 1; loadUsers(); });
+$("#u-size").addEventListener("change", (e) => { state.users.size = parseInt(e.target.value, 10) || 25; state.users.page = 1; loadUsers(); });
+
+const dProjects = debounce(() => { state.projects.page = 1; loadProjects(); }, 300);
+$("#p-search").addEventListener("input", (e) => { state.projects.search = e.target.value.trim(); dProjects(); });
+$("#p-deleted").addEventListener("change", (e) => { state.projects.include_deleted = e.target.checked; state.projects.page = 1; loadProjects(); });
+$("#p-size").addEventListener("change", (e) => { state.projects.size = parseInt(e.target.value, 10) || 25; state.projects.page = 1; loadProjects(); });
+
+const dAudit = debounce(() => { state.audit.page = 1; loadAudit(); }, 300);
+$("#a-action").addEventListener("input", (e) => { state.audit.action = e.target.value.trim(); dAudit(); });
+$("#a-entity").addEventListener("input", (e) => { state.audit.entity_type = e.target.value.trim(); dAudit(); });
+$("#a-size").addEventListener("change", (e) => { state.audit.size = parseInt(e.target.value, 10) || 25; state.audit.page = 1; loadAudit(); });
+
+/* ══ boot ═════════════════════════════════════════════════════════════ */
+(async function boot() {
+  if (!store.get(K.ACCESS) && !store.get(K.REFRESH)) { showView("login"); return; }
+  try {
+    const me = await loadMe();
+    enterApp(me);
+  } catch (e) {
+    if (e.status === 401) return; // hardSignOut already switched to the login view
+    showView("login");
+    toast("err", "Could not restore your session", e.message);
+  }
+})();
+</script>
+</body>
+</html>
