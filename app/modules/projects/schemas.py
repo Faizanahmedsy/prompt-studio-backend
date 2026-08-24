@@ -14,7 +14,15 @@ from app.modules.users.schemas import UserSummary
 # name it indexes. Re-declaring the full shape here would mean every field the
 # editor gains needs a matching change on the server before it can be saved, and
 # the two definitions would drift the first time that step was skipped.
-DOC_ARRAY_KEYS = ("views", "screens", "edges", "modules", "moduleEdges", "sections")
+DOC_ARRAY_KEYS = (
+    "views",
+    "flows",
+    "screens",
+    "edges",
+    "modules",
+    "moduleEdges",
+    "sections",
+)
 
 # A ceiling on one document, in bytes of serialised JSON. A real 200-screen
 # diagram with modules and notes measures in the low hundreds of kilobytes, so
