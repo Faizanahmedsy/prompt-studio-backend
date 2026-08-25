@@ -88,10 +88,14 @@ def create_app() -> FastAPI:
     # stays the outermost middleware and still answers preflight on errors.
     app.add_middleware(ResponseEnvelopeMiddleware)
 
-    if settings.BACKEND_CORS_ORIGINS:
+    if settings.BACKEND_CORS_ORIGINS or settings.BACKEND_CORS_ORIGIN_REGEX:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.BACKEND_CORS_ORIGINS,
+            # Matched when the exact list does not contain the origin, which is
+            # how preview deployments — a new hostname per commit — are allowed
+            # without listing them.
+            allow_origin_regex=settings.BACKEND_CORS_ORIGIN_REGEX or None,
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],

@@ -86,6 +86,18 @@ class Settings(BaseSettings):
     # does the parsing itself.
     BACKEND_CORS_ORIGINS: Annotated[list[str], NoDecode] = []
 
+    # A regex matched against the Origin header, for origins whose exact value
+    # is not known in advance. Vercel is the reason this exists: every preview
+    # deployment gets its own hostname, so no fixed list can ever contain them.
+    #
+    # Anchor it to YOUR project, not to the platform. `https://.*\.vercel\.app`
+    # trusts every site anybody has ever deployed to Vercel, which is not a
+    # smaller set than "*" in any way that matters.
+    #
+    #   good: ^https://prompt-studio-v2(-[a-z0-9-]+)?\.vercel\.app$
+    #   bad:  ^https://.*\.vercel\.app$
+    BACKEND_CORS_ORIGIN_REGEX: str = ""
+
     # ── Mail ─────────────────────────────────────────────────────────────────
     # "console" logs the message instead of sending it, so invites and resets
     # are testable on a laptop with no SMTP account.

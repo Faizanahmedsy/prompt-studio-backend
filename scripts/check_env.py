@@ -56,10 +56,19 @@ def main() -> int:
         if settings.SUPERADMIN_PASSWORD in {"change-me", "superadmin@2026"}:
             problems.append("SUPERADMIN_PASSWORD is still the example value")
 
-        if not settings.BACKEND_CORS_ORIGINS:
+        if not settings.BACKEND_CORS_ORIGINS and not settings.BACKEND_CORS_ORIGIN_REGEX:
             warnings.append(
                 "BACKEND_CORS_ORIGINS is empty — every browser request from the "
                 "frontend will be blocked, and it will look like a network error"
+            )
+        if "*" in settings.BACKEND_CORS_ORIGINS:
+            warnings.append(
+                'BACKEND_CORS_ORIGINS contains "*" — every website on the internet '
+                "may call this API from a browser. Auth is a bearer token rather "
+                "than a cookie, so this is not the session-riding hole it would "
+                "otherwise be, but it still hands the unauthenticated endpoints "
+                "(register, login, forgot-password) to anyone's page. Prefer "
+                "listing the origins, or BACKEND_CORS_ORIGIN_REGEX for previews."
             )
         if settings.EMAIL_TRANSPORT != "smtp" or not settings.SMTP_HOST:
             warnings.append(
