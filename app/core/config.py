@@ -1,6 +1,7 @@
 import json
 from functools import lru_cache
 from typing import Annotated, Any
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import computed_field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -126,11 +127,18 @@ class Settings(BaseSettings):
     @property
     def DATABASE_URL(self) -> str:
         if self.DATABASE_URL_OVERRIDE:
-            return self.DATABASE_URL_OVERRIDE
+            return _normalise_db_url(self.DATABASE_URL_OVERRIDE)[0]
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
         )
+
+    @property
+    def db_connect_args(self) -> dict[str, object]:
+        """Driver arguments the URL asked for but asyncpg cannot read itself."""
+        if not self.DATABASE_URL_OVERRIDE:
+            return {}
+        return _normalise_db_url(self.DATABASE_URL_OVERRIDE)[1]
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -150,6 +158,54 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.ENVIRONMENT == "production"
+
+
+# ── managed Postgres URLs ────────────────────────────────────────────────────
+
+# Query parameters that belong to libpq and mean nothing to asyncpg. Passed
+# through untouched they do not get ignored — asyncpg raises
+# `TypeError: connect() got an unexpected keyword argument 'sslmode'` and the
+# app dies at the first query, which is a miserable way to discover it.
+_LIBPQ_ONLY = {"sslmode", "channel_binding", "options", "target_session_attrs"}
+
+
+def _normalise_db_url(raw: str) -> tuple[str, dict[str, object]]:
+    """Turn a connection string from a managed provider into one asyncpg accepts.
+
+    Neon, Supabase, Render and the rest all hand out a libpq-flavoured URL —
+    `postgresql://…?sslmode=require&channel_binding=require`. Three things are
+    wrong with it here: the scheme names no driver, and the two parameters are
+    libpq's rather than asyncpg's.
+
+    So the scheme is pinned to asyncpg, the libpq-only parameters are lifted
+    out, and `sslmode` is returned as a driver argument instead — asyncpg takes
+    the same words, just by another route. The point is that the string copied
+    from a provider's dashboard can be pasted in as-is and work.
+
+    SQLite is passed straight through: the test suite sets this variable too.
+    """
+    if raw.startswith("sqlite"):
+        return raw, {}
+
+    parsed = urlsplit(raw)
+    scheme = parsed.scheme
+    if scheme in {"postgres", "postgresql"}:
+        scheme = "postgresql+asyncpg"
+
+    kept: list[tuple[str, str]] = []
+    connect_args: dict[str, object] = {}
+    for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+        if key.lower() == "sslmode":
+            # `prefer` has no asyncpg equivalent and is the default anyway.
+            if value and value != "prefer":
+                connect_args["ssl"] = value
+        elif key.lower() in _LIBPQ_ONLY:
+            continue
+        else:
+            kept.append((key, value))
+
+    url = urlunsplit((scheme, parsed.netloc, parsed.path, urlencode(kept), parsed.fragment))
+    return url, connect_args
 
 
 @lru_cache

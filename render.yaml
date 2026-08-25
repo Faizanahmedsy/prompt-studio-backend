@@ -1,0 +1,51 @@
+# Render blueprint — the free-plan deployment of the API.
+#
+# Import this from the Render dashboard (Blueprints → New Blueprint Instance)
+# and it creates the service with everything below already set. Two values it
+# cannot know are marked `sync: false`; Render prompts for them on the way in.
+#
+# The database is deliberately NOT declared here. Render's own free Postgres is
+# deleted 30 days after it is created, which is a data-loss trap dressed as a
+# free tier. Point DATABASE_URL_OVERRIDE at Neon instead — free with no expiry.
+services:
+  - type: web
+    name: prompt-studio-api
+    runtime: docker
+    plan: free
+    # Ohio, to sit beside a Neon project in AWS US East 2 (Ohio). Every
+    # query crosses this gap, so the two want to be in the same place.
+    region: ohio
+    dockerfilePath: ./Dockerfile
+    # Overrides the image's CMD: migrate, seed, then serve on Render's $PORT.
+    dockerCommand: ./scripts/start.sh
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+
+      # Paste Neon's connection string as-is, sslmode and all — the app
+      # normalises it for asyncpg on the way in.
+      - key: DATABASE_URL_OVERRIDE
+        sync: false
+
+      # Every origin that may call this API, as a JSON array. Your Vercel URL
+      # belongs here; so does the Render URL itself if you open the docs.
+      - key: BACKEND_CORS_ORIGINS
+        sync: false
+
+      # Generated once by Render and never shown to anyone. Changing it signs
+      # every account out, so let it alone after the first deploy.
+      - key: SECRET_KEY
+        generateValue: true
+
+      # The first administrator. Change the password after the first sign-in.
+      - key: SUPERADMIN_EMAIL
+        sync: false
+      - key: SUPERADMIN_PASSWORD
+        sync: false
+
+      # No Redis on the free plan. Collaboration then fans out in-process,
+      # which is correct for the single worker this plan runs — see
+      # app/core/redis.py. Set REDIS_URL later if a second worker appears.
+      - key: REDIS_URL
+        value: ""

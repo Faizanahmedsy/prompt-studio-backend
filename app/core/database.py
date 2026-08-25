@@ -13,9 +13,12 @@ def _engine_kwargs() -> dict[str, object]:
         from sqlalchemy.pool import StaticPool
 
         return {"poolclass": StaticPool, "connect_args": {"check_same_thread": False}}
-    return {
+    kwargs: dict[str, object] = {
         # Drop connections killed by a DB or network restart instead of handing
-        # them out to the next request.
+        # them out to the next request. This is also what makes a serverless
+        # Postgres that suspends when idle — Neon and friends — survive the
+        # first request after it wakes, rather than answering it with a dead
+        # connection from the pool.
         "pool_pre_ping": True,
         "pool_size": 10,
         "max_overflow": 20,
@@ -23,6 +26,10 @@ def _engine_kwargs() -> dict[str, object]:
         # recycling first means the app never discovers it the hard way.
         "pool_recycle": 1800,
     }
+    connect_args = settings.db_connect_args
+    if connect_args:
+        kwargs["connect_args"] = connect_args
+    return kwargs
 
 
 engine = create_async_engine(
