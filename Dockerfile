@@ -29,7 +29,13 @@ COPY --chown=appuser:appuser . .
 
 EXPOSE 8000
 
+# The port is read at check time, not baked in. A managed host injects $PORT and
+# `scripts/start.sh` binds it — hardcoding 8000 here meant the check hit a port
+# nothing was listening on, failed three times, and the platform restarted a
+# container that was serving traffic perfectly well. It flapped between 200 and
+# "no server" every few seconds. Falls back to 8000 for docker-compose, which
+# sets no PORT.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=3 \
-    CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health', timeout=3).status==200 else 1)"
+    CMD python -c "import os,urllib.request,sys; p=os.environ.get('PORT','8000'); sys.exit(0 if urllib.request.urlopen(f'http://localhost:{p}/health', timeout=3).status==200 else 1)"
 
 CMD ["uv", "run", "--no-dev", "--frozen", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
