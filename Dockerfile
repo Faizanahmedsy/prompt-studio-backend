@@ -38,4 +38,15 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=3 \
     CMD python -c "import os,urllib.request,sys; p=os.environ.get('PORT','8000'); sys.exit(0 if urllib.request.urlopen(f'http://localhost:{p}/health', timeout=3).status==200 else 1)"
 
-CMD ["uv", "run", "--no-dev", "--frozen", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Migrate, seed, then serve — the same three steps for every host, so a
+# platform that runs the image's default command gets a working application
+# rather than a server talking to an empty database.
+#
+# This was learned the hard way: with no command configured, Render ran plain
+# uvicorn. The API answered every request and looked healthy, but no migration
+# and no seed had ever run, so there was not a single user to log in as. The
+# setup has to live where it cannot be left out.
+#
+# docker-compose overrides this with its own command, and `make dev` runs
+# uvicorn directly, so local development is unchanged.
+CMD ["./scripts/start.sh"]

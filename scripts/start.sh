@@ -12,6 +12,17 @@ set -e
 
 PORT="${PORT:-8000}"
 
+# Before anything touches the database. A bad value otherwise kills uvicorn at
+# import with a bare pydantic traceback, and the platform reports it as a failed
+# deploy with no clue which setting was wrong. This names it.
+#
+# It refuses to start on an insecure configuration — a default SECRET_KEY above
+# all, since the committed value is public and would let anyone forge a
+# superadmin token. A failed deploy that says why beats a healthy-looking one
+# that is wide open.
+echo "[start] checking configuration"
+uv run --no-dev --frozen python scripts/check_env.py
+
 echo "[start] migrating"
 uv run --no-dev --frozen alembic upgrade head
 

@@ -25,25 +25,51 @@ def main() -> int:
         print(f"[check-env] configuration is invalid:\n{exc}", file=sys.stderr)
         return 1
 
+    # Two lists, because they deserve different answers.
+    #
+    # `problems` are the ones where booting anyway is worse than not booting:
+    # every one of them means the deployment is insecure, and it looks perfectly
+    # healthy from outside while being trivially exploitable. Refusing to start
+    # is the only thing that gets them fixed.
+    #
+    # `warnings` are the ones where something is degraded but nothing is unsafe.
+    # A free-tier deployment with no SMTP is a real and reasonable thing to run;
+    # failing the boot for it would mean the security checks below never get to
+    # run at all, because nobody can deploy. Loud, and every restart.
     problems: list[str] = []
+    warnings: list[str] = []
+
     # Not `is_production`. `staging` is an allowed environment and a real deploy
     # path, and it was getting no checks at all — so a staging box booted on the
     # committed development secret, and anyone with read access to the repo
     # could forge a superadmin token for it.
     if settings.ENVIRONMENT not in {"development", "test"}:
         if settings.SECRET_KEY.startswith("dev-only") or len(settings.SECRET_KEY) < 32:
-            problems.append("SECRET_KEY must be a real 32+ character secret in production")
+            problems.append(
+                "SECRET_KEY must be a real 32+ character secret in production. "
+                "The default is committed to this repository, so anyone who can "
+                "read it can forge a superadmin token. Generate one with "
+                "`openssl rand -hex 32`."
+            )
         if settings.APP_DEBUG:
             problems.append("APP_DEBUG must be false in production")
-        if not settings.BACKEND_CORS_ORIGINS:
-            problems.append("BACKEND_CORS_ORIGINS is empty — the frontend will be blocked")
         if settings.SUPERADMIN_PASSWORD in {"change-me", "superadmin@2026"}:
             problems.append("SUPERADMIN_PASSWORD is still the example value")
-        if settings.EMAIL_TRANSPORT != "smtp" or not settings.SMTP_HOST:
-            problems.append(
-                "EMAIL_TRANSPORT must be smtp with a real SMTP_HOST outside development — "
-                "otherwise invitations and password resets are delivered to nobody"
+
+        if not settings.BACKEND_CORS_ORIGINS:
+            warnings.append(
+                "BACKEND_CORS_ORIGINS is empty — every browser request from the "
+                "frontend will be blocked, and it will look like a network error"
             )
+        if settings.EMAIL_TRANSPORT != "smtp" or not settings.SMTP_HOST:
+            warnings.append(
+                "EMAIL_TRANSPORT is not smtp with a real SMTP_HOST — invitations "
+                "and password resets are written to this log instead of being "
+                "delivered. Read them here, or configure SMTP."
+            )
+
+    for warning in warnings:
+        print(f"[check-env] WARNING: {warning}", file=sys.stderr)
 
     if problems:
         for problem in problems:
