@@ -146,6 +146,26 @@ class Settings(BaseSettings):
         )
 
     @property
+    def database_description(self) -> str:
+        """`database@host:port`, for the line an operator reads at boot.
+
+        Derived from the URL actually in use rather than from the component
+        settings. Those are only the *fallback* — when `DATABASE_URL_OVERRIDE`
+        is set, which is how every hosted deployment is configured, they hold
+        their defaults and the startup line claimed `prompt_studio@localhost`
+        on a service talking to a managed database three regions away. That is
+        the one line somebody reads to answer "which database is this?", and it
+        was wrong in exactly the case where the question gets asked.
+
+        Never includes the password: this goes to a log aggregator.
+        """
+        parsed = urlsplit(self.DATABASE_URL)
+        host = parsed.hostname or "?"
+        port = f":{parsed.port}" if parsed.port else ""
+        name = parsed.path.lstrip("/") or "?"
+        return f"{name}@{host}{port}"
+
+    @property
     def db_connect_args(self) -> dict[str, object]:
         """Driver arguments the URL asked for but asyncpg cannot read itself."""
         if not self.DATABASE_URL_OVERRIDE:

@@ -51,7 +51,7 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
         "%s starting — environment=%s database=%s",
         settings.PROJECT_NAME,
         settings.ENVIRONMENT,
-        f"{settings.POSTGRES_DB}@{settings.POSTGRES_HOST}:{settings.POSTGRES_PORT}",
+        settings.database_description,
     )
     # Said out loud, because the difference is invisible until two people on
     # different workers cannot see each other. Without Redis, collaboration is
