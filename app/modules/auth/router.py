@@ -147,11 +147,13 @@ async def forgot_password(
     """Always answers the same, whether or not the address has an account."""
     token = await service.forgot_password(db, data.email)
     set_response_message(request, ResponseMessage.FORGOT_PASSWORD_SENT)
-    if settings.is_production:
-        return ForgotPasswordResponse()
-    # Outside production the token comes back in the body so the flow can be
-    # exercised without a mail account configured.
-    return ForgotPasswordResponse(reset_token=token)
+    # Only on a developer's own machine and in the test suite. This hands the
+    # caller a working reset token for ANY address they name, so anywhere it is
+    # reachable by someone else — staging included — it is account takeover,
+    # not a convenience.
+    if settings.ENVIRONMENT in {"development", "test"}:
+        return ForgotPasswordResponse(reset_token=token)
+    return ForgotPasswordResponse()
 
 
 @router.post("/reset-password")

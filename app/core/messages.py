@@ -33,6 +33,8 @@ class ErrorMessage:
 
     # ── projects ─────────────────────────────────────────────────────────────
     PROJECT_NOT_FOUND = "Project not found"
+    PUBLIC_LINK_NOT_FOUND = "This link is not valid, or the project is no longer shared"
+    PUBLIC_LINK_DISABLED = "This project is not shared publicly"
     PROJECT_ACCESS_DENIED = "You do not have access to this project"
     PROJECT_ROLE_TOO_LOW = "Your role on this project does not allow that"
     NOT_PROJECT_OWNER = "Only the project owner can do that"
@@ -67,6 +69,9 @@ class ResponseMessage:
     PROJECT_UPDATED = "Project saved"
     PROJECT_DELETED = "Project moved to trash"
     PROJECT_RESTORED = "Project restored"
+    PUBLIC_LINK_ENABLED = "Anyone with the link can now view this project"
+    PUBLIC_LINK_ROTATED = "New link created — the previous one no longer works"
+    PUBLIC_LINK_DISABLED = "Public link turned off"
     MEMBER_ADDED = "Member added"
     MEMBER_UPDATED = "Member updated"
     MEMBER_REMOVED = "Member removed"

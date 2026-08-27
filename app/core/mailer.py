@@ -1,15 +1,19 @@
 """Outbound mail.
 
-Two transports:
+Three transports:
 
 - ``console`` (the default) logs a fully rendered message. Invites and password
-  resets are then testable on a laptop with no SMTP account, and the link is
+  resets are then testable on a laptop with no mail account, and the link is
   right there in the server log.
-- ``smtp`` sends for real.
+- ``resend`` posts to Resend's HTTP API. This is the one to use on Render:
+  outbound SMTP is not dependably open there, and a blocked port 587 looks
+  exactly like a password reset that was never requested.
+- ``smtp`` sends through a mail server directly.
 
-Sending happens on a thread (``smtplib`` is blocking) and **never raises into
-the request**: a mail outage must not fail the invite that was already written
-to the database. Failures are logged and the caller carries on.
+Sending **never raises into the request**: a mail outage must not fail the
+invite that was already written to the database. Failures are logged and the
+caller carries on. SMTP additionally runs on a thread, because ``smtplib``
+blocks.
 """
 
 import asyncio
@@ -17,9 +21,24 @@ import logging
 import smtplib
 from email.message import EmailMessage
 
+import httpx
+
 from app.core.config import settings
 
 logger = logging.getLogger("app.mail")
+
+
+def _scrub(text: str) -> str:
+    """Never let a credential reach the log, whatever raised it.
+
+    Transport errors quote the offending HTTP header, so an unusable API key
+    can arrive here inside an exception message. Belt and braces with the
+    stripping validator in `config`.
+    """
+    for secret in (settings.RESEND_API_KEY, settings.SMTP_PASSWORD):
+        if secret and len(secret) >= 8:
+            text = text.replace(secret, "***")
+    return text
 
 
 def _build(to: str, subject: str, body: str) -> EmailMessage:
@@ -42,6 +61,34 @@ def _send_sync(message: EmailMessage) -> None:
         smtp.send_message(message)
 
 
+async def _send_resend(to: str, subject: str, body: str) -> bool:
+    """POST one message to Resend. Returns whether it was accepted."""
+    async with httpx.AsyncClient(timeout=settings.RESEND_TIMEOUT_SECONDS) as client:
+        response = await client.post(
+            f"{settings.RESEND_BASE_URL.rstrip('/')}/emails",
+            headers={"Authorization": f"Bearer {settings.RESEND_API_KEY}"},
+            json={
+                "from": settings.MAIL_FROM,
+                "to": [to],
+                "subject": subject,
+                "text": body,
+            },
+        )
+    if response.status_code >= 400:
+        # The body carries the actual reason — an unverified sending domain, a
+        # recipient the sandbox will not deliver to — and without it the log
+        # says only "422" for a problem that takes one DNS record to fix.
+        logger.warning(
+            "Resend rejected mail to %s (%s): %s",
+            to,
+            response.status_code,
+            _scrub(response.text[:500]),
+        )
+        return False
+    logger.info("Sent mail to %s via Resend (id=%s)", to, response.json().get("id"))
+    return True
+
+
 async def send_mail(to: str, subject: str, body: str) -> bool:
     """Deliver one message. Returns whether it went out; never raises."""
     if settings.EMAIL_TRANSPORT == "smtp" and not settings.SMTP_HOST:
@@ -52,13 +99,22 @@ async def send_mail(to: str, subject: str, body: str) -> bool:
         # safer half of that choice.
         logger.error("EMAIL_TRANSPORT=smtp but SMTP_HOST is empty; mail to %s was NOT sent", to)
         return False
-    if settings.EMAIL_TRANSPORT != "smtp":
+    if settings.EMAIL_TRANSPORT == "resend" and not settings.RESEND_API_KEY:
+        # Same reasoning as the SMTP guard above: falling back to the console
+        # would write live reset tokens into the container log.
+        logger.error(
+            "EMAIL_TRANSPORT=resend but RESEND_API_KEY is empty; mail to %s was NOT sent", to
+        )
+        return False
+    if settings.EMAIL_TRANSPORT == "console":
         logger.info("[mail:console] to=%s subject=%s\n%s", to, subject, body)
         return True
     try:
+        if settings.EMAIL_TRANSPORT == "resend":
+            return await _send_resend(to, subject, body)
         await asyncio.to_thread(_send_sync, _build(to, subject, body))
     except Exception as exc:  # noqa: BLE001 - mail must never break the request
-        logger.warning("Could not send mail to %s (%s)", to, exc)
+        logger.warning("Could not send mail to %s (%s)", to, _scrub(str(exc)))
         return False
     return True
 

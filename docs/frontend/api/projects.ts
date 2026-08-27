@@ -24,6 +24,8 @@ import type {
   ProjectListQuery,
   ProjectSummary,
   ProjectUpdate,
+  PublicLinkRead,
+  PublicProjectRead,
   Uuid,
   VersionCreate,
   VersionDetail,
@@ -167,4 +169,40 @@ export function updateComment(
 
 export function deleteComment(projectId: Uuid, commentId: Uuid): Promise<void> {
   return del<void>(`/projects/${projectId}/comments/${commentId}`)
+}
+
+
+// ── the public read-only link ────────────────────────────────────────────────
+
+/** Owner only. Whether this project has a live public link, and what it is. */
+export function getPublicLink(projectId: Uuid): Promise<PublicLinkRead> {
+  return get<PublicLinkRead>(`/projects/${projectId}/public-link`)
+}
+
+/** Owner only. Idempotent — calling it twice returns the link already shared. */
+export function enablePublicLink(projectId: Uuid): Promise<PublicLinkRead> {
+  return post<PublicLinkRead>(`/projects/${projectId}/public-link`)
+}
+
+/** Owner only. Mints a new token, which is what revokes links already sent. */
+export function rotatePublicLink(projectId: Uuid): Promise<PublicLinkRead> {
+  return post<PublicLinkRead>(`/projects/${projectId}/public-link/rotate`)
+}
+
+/** Owner only. Takes the link down immediately. Idempotent. */
+export function disablePublicLink(projectId: Uuid): Promise<PublicLinkRead> {
+  return del<PublicLinkRead>(`/projects/${projectId}/public-link`)
+}
+
+/**
+ * Read one shared project with no account.
+ *
+ * `auth: false` deliberately: a signed-in visitor following a public link must
+ * not have their token attached, or the server would answer as *them* and a
+ * member would silently get a different response from everyone else.
+ */
+export function getPublicProject(token: string): Promise<PublicProjectRead> {
+  return get<PublicProjectRead>(`/public/projects/${encodeURIComponent(token)}`, undefined, {
+    auth: false,
+  })
 }

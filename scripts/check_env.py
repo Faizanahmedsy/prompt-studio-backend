@@ -70,11 +70,25 @@ def main() -> int:
                 "(register, login, forgot-password) to anyone's page. Prefer "
                 "listing the origins, or BACKEND_CORS_ORIGIN_REGEX for previews."
             )
-        if settings.EMAIL_TRANSPORT != "smtp" or not settings.SMTP_HOST:
+        # Mail. Each transport fails in its own way, and "not smtp" used to
+        # cover all of them — so a correctly configured Resend deploy was told
+        # its resets were being logged, and a keyless one was told nothing.
+        if settings.EMAIL_TRANSPORT == "console":
             warnings.append(
-                "EMAIL_TRANSPORT is not smtp with a real SMTP_HOST — invitations "
-                "and password resets are written to this log instead of being "
-                "delivered. Read them here, or configure SMTP."
+                "EMAIL_TRANSPORT=console in production — invitations and password "
+                "resets are NOT delivered, and their tokens are written to this "
+                "log where anyone with log access can use them. Configure "
+                "EMAIL_TRANSPORT=resend (with RESEND_API_KEY) or smtp."
+            )
+        elif settings.EMAIL_TRANSPORT == "resend" and not settings.RESEND_API_KEY:
+            problems.append(
+                "EMAIL_TRANSPORT=resend but RESEND_API_KEY is empty — no mail can "
+                "be sent at all. Set the key, or choose another transport."
+            )
+        elif settings.EMAIL_TRANSPORT == "smtp" and not settings.SMTP_HOST:
+            problems.append(
+                "EMAIL_TRANSPORT=smtp but SMTP_HOST is empty — no mail can be "
+                "sent at all. Set the host, or choose another transport."
             )
 
     for warning in warnings:

@@ -11,7 +11,13 @@ from collections.abc import Sequence
 
 from app.core.constants import MemberStatus, ProjectRole
 from app.modules.projects.models import Project, ProjectMember
-from app.modules.projects.schemas import MemberRead, ProjectDetail, ProjectSummary
+from app.modules.projects.schemas import (
+    MemberRead,
+    ProjectDetail,
+    ProjectSummary,
+    PublicLinkRead,
+    PublicProjectRead,
+)
 from app.modules.users.models import User
 from app.modules.users.schemas import UserSummary
 
@@ -69,6 +75,31 @@ def detail(
         **base.model_dump(),
         doc=project.doc or {},
         members=[member_read(member, account) for member, account in members],
+        # Only ever reached through a membership check, so this is not a leak —
+        # but it is the reason `public_token` must never be added to
+        # `ProjectSummary`, which the admin surface and the list endpoint reuse.
+        public_token=project.public_token,
+    )
+
+
+def public_project(project: Project) -> PublicProjectRead:
+    """The anonymous view: the diagram, and nothing about the team behind it."""
+    return PublicProjectRead(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        schema_version=project.schema_version,
+        doc_version=project.doc_version,
+        doc=project.doc or {},
+        updated_at=project.updated_at,
+    )
+
+
+def public_link(project: Project) -> PublicLinkRead:
+    return PublicLinkRead(
+        enabled=project.public_token is not None,
+        token=project.public_token,
+        enabled_at=project.public_enabled_at,
     )
 
 

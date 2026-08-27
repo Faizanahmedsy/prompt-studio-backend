@@ -63,6 +63,17 @@ async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
         )
     else:
         logger.info("Redis connected — collaboration fans out across workers")
+    # A production deployment on the console transport does not merely fail to
+    # send — it writes every reset token and invite it ever issues into the
+    # container log, where anyone with log access can use them.
+    if settings.is_production and settings.EMAIL_TRANSPORT == "console":
+        logger.warning(
+            "EMAIL_TRANSPORT=console in production — no mail is being sent, and reset "
+            "tokens are being written to this log. Set EMAIL_TRANSPORT=resend and "
+            "RESEND_API_KEY."
+        )
+    else:
+        logger.info("Mail transport: %s (from %s)", settings.EMAIL_TRANSPORT, settings.MAIL_FROM)
     yield
     from app.modules.collab.hub import hub
 

@@ -337,6 +337,32 @@ export type ProjectSummary = {
 export type ProjectDetail = ProjectSummary & {
   doc: ProjectDocPayload
   members: MemberRead[]
+  /** The live public link, or null when the project is private. Only ever
+   *  sent to someone who already has access — never on a summary row. */
+  public_token: string | null
+}
+
+/** The state of one project's public read-only link, for its owner. */
+export type PublicLinkRead = {
+  enabled: boolean
+  token: string | null
+  enabled_at: string | null
+}
+
+/**
+ * What an anonymous reader gets from `/public/projects/{token}`.
+ *
+ * Carries no members, no owner and no role — a public link shares a diagram,
+ * not the team behind it.
+ */
+export type PublicProjectRead = {
+  id: Uuid
+  name: string
+  description: string
+  schema_version: number
+  doc_version: number
+  doc: ProjectDocPayload
+  updated_at: string
 }
 
 export type ProjectCreate = {

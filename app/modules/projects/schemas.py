@@ -157,6 +157,39 @@ class ProjectSummary(BaseModel):
 class ProjectDetail(ProjectSummary):
     doc: dict[str, Any]
     members: list[MemberRead] = []
+    # Present so the owner's share dialog knows whether the link is live
+    # without a second request. Only ever populated for someone who already has
+    # access to the project — see `serializers.to_detail`.
+    public_token: str | None = None
+
+
+class PublicLinkRead(BaseModel):
+    """The state of one project's public link, for its owner."""
+
+    enabled: bool
+    token: str | None = None
+    enabled_at: datetime | None = None
+
+
+class PublicProjectRead(BaseModel):
+    """What an anonymous reader gets.
+
+    Deliberately not `ProjectDetail`. A public link shares a *diagram*, not the
+    team behind it: no members, no owner, no activity, no comments, no counts
+    that would let someone infer how the account is used. `id` is the server
+    id and is safe to expose — it is useless without membership — but it lets
+    a member who opens the public link be moved onto their own live copy.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    description: str
+    schema_version: int
+    doc_version: int
+    doc: dict[str, Any]
+    updated_at: datetime
 
 
 class VersionSummary(BaseModel):

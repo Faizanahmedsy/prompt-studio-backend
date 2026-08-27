@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     RATE_LIMIT_SIGN_IN: str = "20/300"
     RATE_LIMIT_REGISTER: str = "10/3600"
     RATE_LIMIT_RESET: str = "5/3600"
+    # The one anonymous route that reads data. Generous — a public diagram is
+    # meant to be opened by a lot of people — but not unbounded, so a token
+    # cannot be used to hammer the database for free.
+    RATE_LIMIT_PUBLIC_READ: str = "120/60"
 
     # ── Seeded accounts ──────────────────────────────────────────────────────
     # A real TLD, deliberately. `.local` is reserved for mDNS and the email
@@ -110,6 +114,13 @@ class Settings(BaseSettings):
     MAIL_FROM: str = "Prompt Studio <no-reply@promptstudio.app>"
     SMTP_TIMEOUT_SECONDS: int = 10
 
+    # Resend's HTTP API. Preferred over SMTP on Render, where outbound port 587
+    # is not reliably open and a blocked connection looks exactly like a
+    # silently undelivered password reset.
+    RESEND_API_KEY: str = ""
+    RESEND_BASE_URL: str = "https://api.resend.com"
+    RESEND_TIMEOUT_SECONDS: int = 10
+
     # ── Collaboration ────────────────────────────────────────────────────────
     WS_HEARTBEAT_SECONDS: int = 25
     PROJECT_VERSION_LIMIT: int = 50
@@ -125,6 +136,25 @@ class Settings(BaseSettings):
             if raw.startswith("["):
                 return json.loads(raw)
             return [item.strip() for item in raw.split(",") if item.strip()]
+        return value
+
+    @field_validator("RESEND_API_KEY", "SMTP_PASSWORD", "SMTP_USER", mode="before")
+    @classmethod
+    def _strip_secret(cls, value: Any) -> Any:
+        """Trim whitespace off credentials pasted into a dashboard.
+
+        A trailing newline on an API key is invisible in the UI and turns into
+        an invalid HTTP header, which raises with the header *value* in the
+        exception message — i.e. the key itself, into the log.
+        """
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("EMAIL_TRANSPORT")
+    @classmethod
+    def _known_transport(cls, value: str) -> str:
+        allowed = {"console", "smtp", "resend"}
+        if value not in allowed:
+            raise ValueError(f"EMAIL_TRANSPORT must be one of {sorted(allowed)}, got {value!r}")
         return value
 
     @field_validator("ENVIRONMENT")

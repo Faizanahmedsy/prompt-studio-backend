@@ -61,6 +61,11 @@ REGISTER = _quota(
     settings.RATE_LIMIT_REGISTER,
     "Too many accounts created from here. Try again later",
 )
+PUBLIC_READ = _quota(
+    "public_read",
+    settings.RATE_LIMIT_PUBLIC_READ,
+    "Too many requests. Wait a moment and try again",
+)
 RESET = _quota(
     "reset",
     settings.RATE_LIMIT_RESET,

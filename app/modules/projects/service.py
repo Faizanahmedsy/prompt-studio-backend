@@ -1,4 +1,5 @@
 import logging
+import secrets
 import uuid
 from collections.abc import Sequence
 from typing import Any
@@ -772,3 +773,108 @@ async def delete_comment(
     comment.deleted_at = now()
     comment.updated_by = user.id
     await db.commit()
+
+
+# ── the public read-only link ────────────────────────────────────────────────
+#
+# A capability, not an identity. Holding the token lets anyone READ one
+# document with no account; it never confers membership, never appears in the
+# member list, and no write path accepts it. Everything in this section is
+# owner-only except `project_by_public_token`, which is the anonymous read.
+
+
+def _mint_public_token() -> str:
+    """A token wide enough that guessing is not a strategy.
+
+    32 bytes of `secrets` entropy, url-safe, so it survives being pasted into
+    chat and back out again. `token_urlsafe` is variable-length near the end,
+    which is fine — the column allows 64 and uniqueness is enforced there.
+    """
+    return secrets.token_urlsafe(32)
+
+
+async def enable_public_link(db: AsyncSession, project: Project, user: User) -> Project:
+    """Turn the link on, or hand back the one already in force.
+
+    Deliberately idempotent. An owner who clicks "share" twice wants the link,
+    not a new link — silently rotating here would break the URL they had
+    already pasted into a message. Rotation is its own explicit action below.
+    """
+    if project.public_token:
+        return project
+    project.public_token = _mint_public_token()
+    project.public_enabled_at = now()
+    project.public_enabled_by_id = user.id
+    add_activity(
+        db,
+        project,
+        user,
+        ActivityType.PUBLIC_LINK_ENABLED,
+        f"{user.email} made this project readable by anyone with the link",
+    )
+    await db.commit()
+    await db.refresh(project)
+    return project
+
+
+async def rotate_public_link(db: AsyncSession, project: Project, user: User) -> Project:
+    """Mint a new token, which is what revokes every link already handed out."""
+    if not project.public_token:
+        return await enable_public_link(db, project, user)
+    project.public_token = _mint_public_token()
+    project.public_enabled_at = now()
+    project.public_enabled_by_id = user.id
+    add_activity(
+        db,
+        project,
+        user,
+        ActivityType.PUBLIC_LINK_ROTATED,
+        f"{user.email} replaced the public link — the previous one no longer works",
+    )
+    await db.commit()
+    await db.refresh(project)
+    return project
+
+
+async def disable_public_link(db: AsyncSession, project: Project, user: User) -> Project:
+    """Take it down. Idempotent, so a double click is not an error."""
+    if not project.public_token:
+        return project
+    project.public_token = None
+    project.public_enabled_at = None
+    project.public_enabled_by_id = None
+    add_activity(
+        db,
+        project,
+        user,
+        ActivityType.PUBLIC_LINK_DISABLED,
+        f"{user.email} turned off the public link",
+    )
+    await db.commit()
+    await db.refresh(project)
+    return project
+
+
+async def project_by_public_token(db: AsyncSession, token: str) -> Project:
+    """The anonymous read. No user, no membership, no session.
+
+    A deleted or archived project is treated as absent rather than served: the
+    owner's last action was to take it away, and a link handed out beforehand
+    must not outlive that. Every failure raises the same NotFoundError, so the
+    endpoint cannot be used to tell "wrong token" from "link switched off".
+    """
+    # An empty token would otherwise match every row whose column is NULL and
+    # hand out a private project.
+    if not token or not token.strip():
+        raise NotFoundError(ErrorMessage.PUBLIC_LINK_NOT_FOUND)
+    result = await db.execute(
+        select(Project).where(
+            Project.public_token == token,
+            Project.is_deleted.is_(False),
+            Project.is_archived.is_(False),
+        )
+    )
+    project = result.scalar_one_or_none()
+    if project is None:
+        raise NotFoundError(ErrorMessage.PUBLIC_LINK_NOT_FOUND)
+    return project

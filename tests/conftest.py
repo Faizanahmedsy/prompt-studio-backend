@@ -35,6 +35,7 @@ os.environ["BCRYPT_ROUNDS"] = "4"
 os.environ["RATE_LIMIT_SIGN_IN"] = "100000/60"
 os.environ["RATE_LIMIT_REGISTER"] = "100000/60"
 os.environ["RATE_LIMIT_RESET"] = "100000/60"
+os.environ["RATE_LIMIT_PUBLIC_READ"] = "100000/60"
 
 import asyncpg  # noqa: E402
 import httpx  # noqa: E402

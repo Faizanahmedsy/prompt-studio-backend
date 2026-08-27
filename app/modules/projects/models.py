@@ -61,6 +61,24 @@ class Project(Base, UUIDMixin, AuditMixin):
     )
     last_activity_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
 
+    # ── Public read-only link ────────────────────────────────────────────────
+    # NULL means the project is private, which is the default and the only
+    # state an existing row can be in after the migration. A non-NULL token is
+    # a capability: whoever holds it may READ this document without an account.
+    #
+    # Stored as the token itself rather than a hash. It grants read access to a
+    # diagram the owner deliberately made public — not a session, not an
+    # identity — and keeping it readable is what lets the owner see the live
+    # link in the UI and revoke exactly the one they shared. Rotating writes a
+    # new token, which is what invalidates every link already handed out.
+    public_token: Mapped[str | None] = mapped_column(
+        String(64), unique=True, nullable=True, index=True
+    )
+    public_enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    public_enabled_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="SET NULL")
+    )
+
     members: Mapped[list["ProjectMember"]] = relationship(
         back_populates="project", cascade="all, delete-orphan", lazy="selectin"
     )

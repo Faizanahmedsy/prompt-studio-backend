@@ -12,6 +12,7 @@ from app.core.envelope import set_response_message
 from app.core.exceptions import AuthorizationError, ConflictError, NotFoundError
 from app.core.messages import ErrorMessage, ResponseMessage
 from app.core.pagination import Page, PageQuery
+from app.core.rate_limit import PUBLIC_READ, limit
 from app.modules.auth.dependencies import CurrentUser, DbSession
 from app.modules.projects import serializers, service
 from app.modules.projects.access import (
@@ -36,6 +37,8 @@ from app.modules.projects.schemas import (
     ProjectDocSave,
     ProjectSummary,
     ProjectUpdate,
+    PublicLinkRead,
+    PublicProjectRead,
     VersionCreate,
     VersionDetail,
     VersionSummary,
@@ -402,3 +405,65 @@ async def _owner_map(db: AsyncSession, projects: Sequence[Project]) -> dict[uuid
         return {}
     result = await db.execute(select(User).where(User.id.in_(owner_ids)))
     return {user.id: user for user in result.scalars()}
+
+
+# ── the public read-only link ────────────────────────────────────────────────
+#
+# Owner-only to manage, anonymous to read. The read route lives on its own
+# router (`public_router`, mounted without the auth dependency) because
+# everything under `/projects` requires a signed-in caller by design, and
+# poking a hole in that prefix is how the hole ends up somewhere else later.
+
+
+@router.get("/{project_id}/public-link", response_model=PublicLinkRead)
+async def read_public_link(access: ProjectOwner) -> PublicLinkRead:
+    """Whether this project has a live public link, and what it is."""
+    return serializers.public_link(access.project)
+
+
+@router.post("/{project_id}/public-link", response_model=PublicLinkRead)
+async def enable_public_link(
+    access: ProjectOwner, db: DbSession, current_user: CurrentUser, request: Request
+) -> PublicLinkRead:
+    """Turn the link on. Idempotent — clicking twice returns the same token."""
+    project = await service.enable_public_link(db, access.project, current_user)
+    set_response_message(request, ResponseMessage.PUBLIC_LINK_ENABLED)
+    return serializers.public_link(project)
+
+
+@router.post("/{project_id}/public-link/rotate", response_model=PublicLinkRead)
+async def rotate_public_link(
+    access: ProjectOwner, db: DbSession, current_user: CurrentUser, request: Request
+) -> PublicLinkRead:
+    """Replace the token, which is what revokes links already handed out."""
+    project = await service.rotate_public_link(db, access.project, current_user)
+    set_response_message(request, ResponseMessage.PUBLIC_LINK_ROTATED)
+    return serializers.public_link(project)
+
+
+@router.delete("/{project_id}/public-link", response_model=PublicLinkRead)
+async def disable_public_link(
+    access: ProjectOwner, db: DbSession, current_user: CurrentUser, request: Request
+) -> PublicLinkRead:
+    """Take it down. Idempotent."""
+    project = await service.disable_public_link(db, access.project, current_user)
+    set_response_message(request, ResponseMessage.PUBLIC_LINK_DISABLED)
+    return serializers.public_link(project)
+
+
+public_router = APIRouter(prefix="/public", tags=["Public"])
+
+
+@public_router.get(
+    "/projects/{token}",
+    response_model=PublicProjectRead,
+    dependencies=[limit(PUBLIC_READ)],
+)
+async def read_public_project(token: str, db: DbSession) -> PublicProjectRead:
+    """One shared diagram, to anyone holding the link. No account required.
+
+    Read-only by construction: there is no counterpart write route, and the
+    token is never accepted anywhere a document is saved.
+    """
+    project = await service.project_by_public_token(db, token)
+    return serializers.public_project(project)
