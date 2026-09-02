@@ -471,3 +471,74 @@ async def test_a_snapshot_names_who_wrote_it_not_who_replaced_it(
     # The newest snapshot holds what Alice wrote, so it is hers.
     newest = versions["items"][0]
     assert newest["created_by"] == alice.id
+
+
+async def test_the_history_says_who_and_the_feed_collapses_a_run_of_saves(
+    client: httpx.AsyncClient,
+) -> None:
+    """Version history and the activity feed together answer "who changed what".
+
+    Neither did before: snapshots carried a bare UUID the client cannot resolve,
+    and the live path recorded no activity at all — so for most projects the
+    entire record of a day's work was a counter with no names on it.
+    """
+    alice = await register(client)
+    project = await create(client, alice)
+    detail = unwrap(await client.get(f"{API}/projects/{project['id']}", headers=alice.headers))
+
+    version = detail["doc_version"]
+    for count in range(3):
+        saved = unwrap(
+            await client.put(
+                f"{API}/projects/{project['id']}/document",
+                headers=alice.headers,
+                json={"doc": sample_doc(count + 3), "base_version": version},
+            )
+        )
+        version = saved["doc_version"]
+
+    versions = unwrap(
+        await client.get(f"{API}/projects/{project['id']}/versions", headers=alice.headers)
+    )
+    assert versions["items"], "a save with no label still snapshots"
+    assert versions["items"][0]["created_by_name"] == alice.user["full_name"]
+    assert versions["items"][0]["created_by_email"] == alice.email
+
+    feed = unwrap(
+        await client.get(f"{API}/projects/{project['id']}/activity", headers=alice.headers)
+    )
+    edits = [row for row in feed["items"] if row["type"] == "PROJECT_UPDATED"]
+    # One entry for the run, not one per save — and it says how many.
+    assert len(edits) == 1
+    assert edits[0]["actor_email"] == alice.email
+    assert edits[0]["meta"]["edits"] == 3
+
+
+async def test_two_people_editing_get_an_entry_each(client: httpx.AsyncClient) -> None:
+    alice = await register(client)
+    project = await create(client, alice)
+    bob = await register(client)
+    await client.post(
+        f"{API}/projects/{project['id']}/members",
+        headers=alice.headers,
+        json={"email": bob.email, "role": "EDITOR"},
+    )
+
+    detail = unwrap(await client.get(f"{API}/projects/{project['id']}", headers=alice.headers))
+    version = detail["doc_version"]
+    for actor in (alice, bob, alice):
+        saved = unwrap(
+            await client.put(
+                f"{API}/projects/{project['id']}/document",
+                headers=actor.headers,
+                json={"doc": sample_doc(5), "base_version": version},
+            )
+        )
+        version = saved["doc_version"]
+
+    feed = unwrap(
+        await client.get(f"{API}/projects/{project['id']}/activity", headers=alice.headers)
+    )
+    edits = [row for row in feed["items"] if row["type"] == "PROJECT_UPDATED"]
+    # Alice's two saves are one session; Bob's is his own.
+    assert sorted(row["actor_email"] for row in edits) == sorted([alice.email, bob.email])

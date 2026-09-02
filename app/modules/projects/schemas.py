@@ -201,6 +201,11 @@ class VersionSummary(BaseModel):
     is_auto: bool
     created_at: datetime
     created_by: uuid.UUID | None = None
+    # The author, spelled out. A history that answers "who changed this" with a
+    # UUID answers nobody, and the client cannot look one up: it has no route
+    # that turns a user id into a person.
+    created_by_name: str = ""
+    created_by_email: str = ""
 
 
 class VersionDetail(VersionSummary):

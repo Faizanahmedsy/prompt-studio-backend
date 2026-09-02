@@ -2,6 +2,7 @@ import logging
 import secrets
 import uuid
 from collections.abc import Sequence
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import Select, func, or_, select
@@ -68,6 +69,59 @@ def add_activity(
         )
     )
     project.last_activity_at = now()
+
+
+# How long one person's editing counts as a single entry in the feed.
+#
+# Every save cannot be a row: the collaboration socket saves as fast as somebody
+# drags a node, and a feed with four hundred "saved changes" entries answers
+# nothing. But recording none of them — which is what the socket did — means the
+# project's history cannot say who changed it either. So consecutive saves by
+# the same person collapse into one entry that counts them and remembers the
+# version range it covered.
+EDIT_SESSION_MINUTES = 10
+
+
+async def record_edit(db: AsyncSession, project: Project, user: User, to_version: int) -> None:
+    """Note that this person edited the document, coalescing a run of saves."""
+    since = now() - timedelta(minutes=EDIT_SESSION_MINUTES)
+    result = await db.execute(
+        select(ProjectActivity)
+        .where(
+            ProjectActivity.project_id == project.id,
+            ProjectActivity.actor_id == user.id,
+            ProjectActivity.type == ActivityType.PROJECT_UPDATED.value,
+            ProjectActivity.created_at >= since,
+        )
+        .order_by(ProjectActivity.created_at.desc())
+        .limit(1)
+    )
+    open_session = result.scalars().first()
+    if open_session is not None:
+        meta = dict(open_session.meta or {})
+        meta["edits"] = int(meta.get("edits", 1)) + 1
+        meta["to_version"] = to_version
+        meta["last_edit_at"] = now().isoformat()
+        # Reassigned rather than mutated: the column is JSON, and SQLAlchemy
+        # does not see an in-place change to a dict it already handed out.
+        open_session.meta = meta
+        open_session.summary = f"saved {meta['edits']} changes"
+        project.last_activity_at = now()
+        return
+
+    add_activity(
+        db,
+        project,
+        user,
+        ActivityType.PROJECT_UPDATED,
+        "saved changes",
+        {
+            "edits": 1,
+            "from_version": to_version - 1,
+            "to_version": to_version,
+            "last_edit_at": now().isoformat(),
+        },
+    )
 
 
 # ── documents ────────────────────────────────────────────────────────────────
@@ -329,15 +383,12 @@ async def save_doc(
     project.updated_by = user.id
     sync_counts(project)
     project.last_activity_at = now()
+    # Recorded for every save, including the socket's — the flag used to turn
+    # this off entirely for live editing, which is exactly the editing that
+    # matters. `record_edit` coalesces a run of saves by one person, so the
+    # feed gains an entry per person per session rather than per keystroke.
     if activity:
-        add_activity(
-            db,
-            project,
-            user,
-            ActivityType.PROJECT_UPDATED,
-            "saved changes",
-            {"doc_version": project.doc_version},
-        )
+        await record_edit(db, project, user, project.doc_version)
     await db.commit()
     await db.refresh(project)
     return project
@@ -696,6 +747,20 @@ async def list_versions(
         .order_by(ProjectVersion.created_at.desc())
     )
     return await paginated(db, statement, params)
+
+
+async def authors_of(db: AsyncSession, versions: Sequence[ProjectVersion]) -> dict[uuid.UUID, User]:
+    """Every version author in one query, keyed by id.
+
+    One query rather than one per row: a page of fifty snapshots by the same
+    two people should not be fifty round trips, and the alternative — letting
+    the response carry bare UUIDs — is a history that names nobody.
+    """
+    ids = {version.created_by for version in versions if version.created_by}
+    if not ids:
+        return {}
+    result = await db.execute(select(User).where(User.id.in_(ids)))
+    return {user.id: user for user in result.scalars()}
 
 
 async def get_version(

@@ -275,7 +275,11 @@ async def _apply_update(
                 # The feed would otherwise gain a "saved changes" line every few
                 # seconds and become unreadable. Autosaves are visible as the
                 # version number moving; the feed records the things people did.
-                activity=False,
+                # The live path records edits too now: `record_edit` collapses a
+                # run of saves by one person into a single feed entry, so this
+                # no longer floods, and the history can finally say who was
+                # editing — which for most projects is only ever this path.
+                activity=True,
             )
         except AppError as exc:
             # Release the FOR UPDATE before writing to the socket. The lock is

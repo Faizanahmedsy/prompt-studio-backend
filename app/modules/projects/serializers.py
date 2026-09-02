@@ -10,13 +10,14 @@ import uuid
 from collections.abc import Sequence
 
 from app.core.constants import MemberStatus, ProjectRole
-from app.modules.projects.models import Project, ProjectMember
+from app.modules.projects.models import Project, ProjectMember, ProjectVersion
 from app.modules.projects.schemas import (
     MemberRead,
     ProjectDetail,
     ProjectSummary,
     PublicLinkRead,
     PublicProjectRead,
+    VersionSummary,
 )
 from app.modules.users.models import User
 from app.modules.users.schemas import UserSummary
@@ -110,3 +111,17 @@ def public_link(project: Project) -> PublicLinkRead:
 
 def owner_map(users: Sequence[User]) -> dict[uuid.UUID, User]:
     return {user.id: user for user in users}
+
+
+def version_summary(version: ProjectVersion, author: User | None) -> VersionSummary:
+    """A snapshot with its author's name attached."""
+    return VersionSummary(
+        id=version.id,
+        label=version.label,
+        doc_version=version.doc_version,
+        is_auto=version.is_auto,
+        created_at=version.created_at,
+        created_by=version.created_by,
+        created_by_name=author.display_name if author else "",
+        created_by_email=author.email if author else "",
+    )

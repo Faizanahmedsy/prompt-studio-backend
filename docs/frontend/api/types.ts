@@ -429,6 +429,9 @@ export type VersionSummary = {
   is_auto: boolean
   created_at: IsoDateTime
   created_by: Uuid | null
+  /** The author, spelled out: the client has no route that resolves a user id. */
+  created_by_name: string
+  created_by_email: string
 }
 
 export type VersionDetail = VersionSummary & { doc: ProjectDocPayload }

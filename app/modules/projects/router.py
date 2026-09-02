@@ -307,8 +307,16 @@ async def list_versions(
     access: ProjectViewer, db: DbSession, params: PageQuery
 ) -> Page[VersionSummary]:
     page = await service.list_versions(db, access.project.id, params)
+    authors = await service.authors_of(db, page.items)
     return Page.build(
-        [VersionSummary.model_validate(item) for item in page.items], page.total, params
+        [
+            serializers.version_summary(
+                item, authors.get(item.created_by) if item.created_by else None
+            )
+            for item in page.items
+        ],
+        page.total,
+        params,
     )
 
 
@@ -324,7 +332,7 @@ async def save_version(
     # argument is built once at import and then shared by every request.
     version = await service.save_version(db, access, current_user, (data or VersionCreate()).label)
     set_response_message(request, ResponseMessage.VERSION_SAVED)
-    return VersionSummary.model_validate(version)
+    return serializers.version_summary(version, current_user)
 
 
 @router.get("/{project_id}/versions/{version_id}", response_model=VersionDetail)
@@ -332,7 +340,11 @@ async def read_version(
     version_id: uuid.UUID, access: ProjectViewer, db: DbSession
 ) -> VersionDetail:
     version = await service.get_version(db, access.project.id, version_id)
-    return VersionDetail.model_validate(version)
+    author = (await service.authors_of(db, [version])).get(version.created_by or uuid.uuid4())
+    return VersionDetail(
+        **serializers.version_summary(version, author).model_dump(),
+        doc=version.doc,
+    )
 
 
 @router.post("/{project_id}/versions/{version_id}/restore", response_model=ProjectSummary)
