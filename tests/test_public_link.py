@@ -360,3 +360,56 @@ async def test_the_link_is_recorded_in_the_activity_feed(client: httpx.AsyncClie
     feed = unwrap(await client.get(f"{API}/projects/{pid}/activity", headers=owner.headers))
     kinds = {entry["type"] for entry in feed["items"]}
     assert {"PUBLIC_LINK_ENABLED", "PUBLIC_LINK_ROTATED", "PUBLIC_LINK_DISABLED"} <= kinds
+
+
+async def test_a_viewer_cannot_read_the_token_and_publish_the_project(
+    client: httpx.AsyncClient,
+) -> None:
+    """Publishing is the owner's decision, and the token is how it is made.
+
+    Handing it to every member let the least-privileged one publish the project
+    by pasting a URL, with nothing anywhere to say who did.
+    """
+    owner = await register(client)
+    project = await create(client, owner)
+    unwrap(await client.post(f"{API}/projects/{project['id']}/public-link", headers=owner.headers))
+
+    viewer = await register(client)
+    await client.post(
+        f"{API}/projects/{project['id']}/members",
+        headers=owner.headers,
+        json={"email": viewer.email, "role": "VIEWER"},
+    )
+    seen = unwrap(await client.get(f"{API}/projects/{project['id']}", headers=viewer.headers))
+    assert seen["public_token"] is None
+
+    mine = unwrap(await client.get(f"{API}/projects/{project['id']}", headers=owner.headers))
+    assert mine["public_token"]
+
+
+async def test_an_editor_cannot_take_the_link_down_by_archiving(
+    client: httpx.AsyncClient,
+) -> None:
+    """Archiving stops the public link serving, so it is an owner's call."""
+    owner = await register(client)
+    project = await create(client, owner)
+    editor = await register(client)
+    await client.post(
+        f"{API}/projects/{project['id']}/members",
+        headers=owner.headers,
+        json={"email": editor.email, "role": "EDITOR"},
+    )
+    refused = await client.patch(
+        f"{API}/projects/{project['id']}",
+        headers=editor.headers,
+        json={"is_archived": True},
+    )
+    assert refused.status_code == 403
+    # An editor may still rename it — editing is what the role is for.
+    assert (
+        await client.patch(
+            f"{API}/projects/{project['id']}",
+            headers=editor.headers,
+            json={"name": "Renamed by the editor"},
+        )
+    ).status_code == 200

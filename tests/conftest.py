@@ -45,6 +45,7 @@ import pytest_asyncio  # noqa: E402
 from app import models as _registry  # noqa: E402,F401  (registers every table)
 from app.core.base_model import Base  # noqa: E402
 from app.core.database import AsyncSessionLocal, engine  # noqa: E402
+from app.core.security import create_verify_token  # noqa: E402
 from app.main import app  # noqa: E402
 
 API = "/api/v1"
@@ -139,15 +140,33 @@ async def register(
     email: str | None = None,
     password: str = "Password123",
     full_name: str = "Test Person",
+    *,
+    verify: bool = True,
     **extra: Any,
 ) -> Actor:
+    """Register, and by default confirm the address.
+
+    Confirmation is not decoration: sharing is by email, and an account that
+    has not proved its address is no longer matched to an invitation — so a
+    test actor that skips it is a test actor with no access to anything it was
+    invited to. `verify=False` is for the tests that are about that rule.
+    """
     address = email or f"user.{uuid.uuid4().hex[:10]}@example.com"
     response = await client.post(
         f"{API}/auth/register",
         json={"email": address, "password": password, "full_name": full_name, **extra},
     )
     assert response.status_code == 201, response.text
-    return Actor(address, password, unwrap(response))
+    actor = Actor(address, password, unwrap(response))
+    if verify and actor.user.get("email_verified_at") is None:
+        confirmed = await client.post(
+            f"{API}/auth/verify-email",
+            # The stored address, not the one typed: registration normalises it,
+            # and a token carrying the raw spelling confirms nothing.
+            json={"token": create_verify_token(actor.id, actor.user["email"])},
+        )
+        assert confirmed.status_code == 200, confirmed.text
+    return actor
 
 
 async def sign_in(client: httpx.AsyncClient, email: str, password: str) -> Actor:

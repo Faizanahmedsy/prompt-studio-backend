@@ -122,7 +122,16 @@ async def register(db: AsyncSession, data: RegisterRequest) -> LoginResponse:
     # collaboration hub, which imports back into this package.
     from app.modules.projects import service as project_service
 
-    claimed = await project_service.claim_invites(db, user)
+    # Only for an address this registration actually proved — the invite token
+    # names the address it was issued to, and matching it is the proof.
+    #
+    # Claiming unconditionally meant anyone who knew an invited address could
+    # register it with their own password and be an EDITOR on that project
+    # seconds later, reading and writing the whole document, while the real
+    # invitee could never register because the address was taken. An address in
+    # a registration form is a claim, not evidence. An unproved registration
+    # leaves the invitations pending; confirming the address claims them.
+    claimed = await project_service.claim_invites(db, user) if verified else 0
     await audit_service.record(
         db,
         "auth.register",
@@ -500,6 +509,22 @@ async def verify_email(db: AsyncSession, token: str) -> User:
         raise AuthenticationError(ErrorMessage.INVALID_VERIFY_TOKEN)
     if user.email_verified_at is None:
         user.email_verified_at = now()
+    # The other half of the rule above: an address confirmed here is proved, so
+    # anything waiting for it is now theirs. Without this, someone who
+    # registered before opening the invitation would confirm their address and
+    # still see none of the projects they were told about.
+    from app.modules.projects import service as project_service
+
+    claimed = await project_service.claim_invites(db, user)
+    if claimed:
+        await audit_service.record(
+            db,
+            "auth.verify_email",
+            entity_type="user",
+            entity_id=user.id,
+            summary=f"{user.email} confirmed their address and claimed {claimed} invitation(s)",
+            meta={"claimed_invites": claimed},
+        )
     await _revoke_jti(db, payload)
     await db.commit()
     return user

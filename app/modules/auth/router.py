@@ -151,7 +151,13 @@ async def forgot_password(
     # caller a working reset token for ANY address they name, so anywhere it is
     # reachable by someone else — staging included — it is account takeover,
     # not a convenience.
-    if settings.ENVIRONMENT in {"development", "test"}:
+    #
+    # "development" was in this set, and it is the default value of
+    # ENVIRONMENT — so a staging box, a compose stack on an office LAN, or a
+    # deploy where the variable was dropped handed anyone a working reset token
+    # for any address, with no mailbox needed. A developer on their own machine
+    # already has the token: the console mail transport prints it.
+    if settings.ENVIRONMENT == "test":
         return ForgotPasswordResponse(reset_token=token)
     return ForgotPasswordResponse()
 

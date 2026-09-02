@@ -11,7 +11,12 @@ from sqlalchemy.sql.elements import UnaryExpression
 
 from app.core.config import settings
 from app.core.constants import ActivityType, MemberStatus, ProjectRole
-from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.core.exceptions import (
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+    ValidationError,
+)
 from app.core.mailer import send_project_invite
 from app.core.messages import ErrorMessage
 from app.core.pagination import PageParams, PageResult, paginated
@@ -159,7 +164,7 @@ def _visible_projects_query(user: User) -> Select[tuple[Project]]:
         .where(
             Project.is_deleted.is_(False),
             ProjectMember.status != MemberStatus.REVOKED,
-            or_(ProjectMember.user_id == user.id, ProjectMember.email == user.email),
+            _membership_match(user),
         )
         .options(selectinload(Project.members))
         .distinct()
@@ -215,7 +220,7 @@ async def role_map(
         select(ProjectMember.project_id, ProjectMember.role).where(
             ProjectMember.project_id.in_(project_ids),
             ProjectMember.status != MemberStatus.REVOKED,
-            or_(ProjectMember.user_id == user.id, ProjectMember.email == user.email),
+            _membership_match(user),
         )
     )
     return {row[0]: ProjectRole(row[1]) for row in result.all()}
@@ -250,6 +255,17 @@ async def update_project(
 ) -> Project:
     project = access.project
     changes = data.model_dump(exclude_unset=True, exclude_none=True)
+
+    # Archiving is an owner's decision, not an editor's.
+    #
+    # `project_by_public_token` refuses an archived project, so an EDITOR
+    # setting this took down every public link the owner had handed out — an
+    # owner-only capability, revoked by a non-owner, with nothing recorded
+    # anywhere to say who did it. Editing the document is what EDITOR means;
+    # taking the project off the air is not.
+    if "is_archived" in changes and access.role != ProjectRole.OWNER:
+        raise AuthorizationError(ErrorMessage.NOT_PROJECT_OWNER)
+
     renamed = "name" in changes and changes["name"].strip() != project.name
 
     for field, value in changes.items():
@@ -364,6 +380,20 @@ async def restore_project(db: AsyncSession, project_id: uuid.UUID, user: User) -
 # ── membership ───────────────────────────────────────────────────────────────
 
 
+def _membership_match(user: User) -> Any:
+    """Which membership rows belong to this account.
+
+    The email half only applies once the address is confirmed — see the note in
+    `access.find_membership`. Kept here as one expression so the project list,
+    the role lookup and the access check cannot answer the question three
+    different ways, which is how a project appears in somebody's list and then
+    404s when they open it.
+    """
+    if user.email_verified_at is None:
+        return ProjectMember.user_id == user.id
+    return or_(ProjectMember.user_id == user.id, ProjectMember.email == user.email)
+
+
 async def invite_member(
     db: AsyncSession, project: Project, actor: User, data: MemberInvite
 ) -> ProjectMember:
@@ -379,13 +409,22 @@ async def invite_member(
         raise ConflictError(ErrorMessage.MEMBER_ALREADY_ADDED)
 
     account = await user_service.get_by_email(db, email)
+    # An account only counts once it has proved the address.
+    #
+    # Anyone can register any address — there is no confirmation step before an
+    # account is usable — so binding the membership to whatever account happens
+    # to hold the string meant registering `finance@theirclient.com` in advance
+    # was enough to be handed EDITOR on a project shared with it later. The row
+    # stays INVITED until the address is confirmed, and confirming it claims
+    # the invitation.
+    claimed = account if account is not None and account.email_verified_at is not None else None
     member = existing or ProjectMember(project_id=project.id, email=email)
     member.role = data.role
-    member.user_id = account.id if account else None
-    member.status = MemberStatus.ACTIVE if account else MemberStatus.INVITED
+    member.user_id = claimed.id if claimed else None
+    member.status = MemberStatus.ACTIVE if claimed else MemberStatus.INVITED
     member.invited_by = actor.id
     member.invited_at = now()
-    member.joined_at = now() if account else None
+    member.joined_at = now() if claimed else None
     db.add(member)
 
     add_activity(
@@ -597,7 +636,12 @@ async def _snapshot(
         doc=project.doc,
         doc_version=project.doc_version,
         is_auto=is_auto,
-        created_by=user.id,
+        # Whoever wrote the content being snapshotted, not whoever is
+        # overwriting it. `user` here is the incoming writer, so stamping them
+        # made the history say Bob authored Alice's document — the one column
+        # anybody would read to answer "who changed this" named the wrong
+        # person every time two people worked on a project.
+        created_by=project.updated_by or user.id,
     )
     db.add(version)
     if is_auto:

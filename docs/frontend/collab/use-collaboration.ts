@@ -318,9 +318,15 @@ export function useCollaboration(options: UseCollaborationOptions): UseCollabora
     const sent = sendRaw({
       type: "doc.update",
       doc,
-      // The version we believe the server holds. If it has moved on, this
-      // comes back as `doc.conflict` rather than silently overwriting.
-      base_version: docVersionRef.current || null,
+      // The version this edit was written against — captured when it was
+      // queued, not read again now.
+      //
+      // Reading `docVersionRef` here defeated the whole guard: a colleague's
+      // save landing inside the 400ms debounce advanced it, so the flush
+      // announced a base the server agreed with and overwrote their work with
+      // no conflict, no 409 and no snapshot. The base has to be the one the
+      // pending document actually saw.
+      base_version: pendingBaseRef.current ?? docVersionRef.current ?? null,
       schema_version: optionsRef.current.schemaVersion,
     })
     // Left queued when the socket is down, so a reconnect flushes it on `open`.

@@ -72,11 +72,18 @@ async def find_membership(
     and a member who signed in before the claim ran would otherwise be told
     they have no access to the project they were just invited to.
     """
+    # The address half of that only counts for an account that has confirmed
+    # the address. Without the check, membership was granted to whoever held
+    # the email string — so an attacker who registered an address before it was
+    # ever invited walked into the project the moment somebody shared with it,
+    # and the real owner of the address could never register at all.
+    from app.modules.projects.service import _membership_match
+
     result = await db.execute(
         select(ProjectMember).where(
             ProjectMember.project_id == project_id,
             ProjectMember.status != MemberStatus.REVOKED,
-            (ProjectMember.user_id == user.id) | (ProjectMember.email == user.email),
+            _membership_match(user),
         )
     )
     member = result.scalars().first()

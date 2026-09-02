@@ -290,7 +290,9 @@ async def test_reset_clears_a_lockout(client: httpx.AsyncClient) -> None:
 async def test_email_verification(client: httpx.AsyncClient) -> None:
     from app.core.security import create_verify_token
 
-    actor = await register(client)
+    # The one actor that must arrive unconfirmed — this test is about the
+    # confirmation itself.
+    actor = await register(client, verify=False)
     assert (
         unwrap(await client.get(f"{API}/users/me", headers=actor.headers))["email_verified_at"]
         is None
@@ -345,3 +347,21 @@ async def test_removing_your_avatar_is_expressible(client: httpx.AsyncClient) ->
         await client.patch(f"{API}/users/me", headers=actor.headers, json={"full_name": None})
     )
     assert kept["full_name"] == actor.user["full_name"]
+
+
+async def test_the_reset_token_never_comes_back_outside_the_test_suite(
+    client: httpx.AsyncClient, monkeypatch
+) -> None:
+    """`ENVIRONMENT` defaults to "development", and this used to answer there.
+
+    Anywhere reachable by another person — a staging box, a compose stack on an
+    office LAN, a deploy where the variable was dropped — that is unauthenticated
+    account takeover for every registered address, no mailbox required.
+    """
+    from app.core.config import settings
+
+    actor = await register(client)
+    for environment in ("development", "staging", "production"):
+        monkeypatch.setattr(settings, "ENVIRONMENT", environment)
+        body = unwrap(await client.post(f"{API}/auth/forgot-password", json={"email": actor.email}))
+        assert body["reset_token"] is None, environment

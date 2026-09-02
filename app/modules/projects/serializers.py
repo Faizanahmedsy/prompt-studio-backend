@@ -75,10 +75,15 @@ def detail(
         **base.model_dump(),
         doc=project.doc or {},
         members=[member_read(member, account) for member, account in members],
-        # Only ever reached through a membership check, so this is not a leak —
-        # but it is the reason `public_token` must never be added to
-        # `ProjectSummary`, which the admin surface and the list endpoint reuse.
-        public_token=project.public_token,
+        # The owner's alone. Minting, rotating and revoking the public link are
+        # all owner-only routes precisely because publishing the project to the
+        # internet is the owner's decision — and handing the token to every
+        # VIEWER let the least-privileged member make that decision instead, by
+        # pasting a URL, with nothing in the activity feed to say who did.
+        #
+        # Also the reason it must never be added to `ProjectSummary`, which the
+        # admin surface and the list endpoint reuse.
+        public_token=project.public_token if my_role == ProjectRole.OWNER else None,
     )
 
 

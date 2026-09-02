@@ -27,14 +27,10 @@ def upgrade() -> None:
     op.add_column(
         "projects", sa.Column("public_enabled_at", sa.DateTime(timezone=True), nullable=True)
     )
-    op.add_column(
-        "projects", sa.Column("public_enabled_by_id", sa.Uuid(), nullable=True)
-    )
+    op.add_column("projects", sa.Column("public_enabled_by_id", sa.Uuid(), nullable=True))
     # Unique so a mint collision fails loudly rather than handing two projects
     # the same link; indexed because the anonymous read path looks up by it.
-    op.create_index(
-        op.f("ix_projects_public_token"), "projects", ["public_token"], unique=True
-    )
+    op.create_index(op.f("ix_projects_public_token"), "projects", ["public_token"], unique=True)
     op.create_foreign_key(
         "fk_projects_public_enabled_by_id_users",
         "projects",

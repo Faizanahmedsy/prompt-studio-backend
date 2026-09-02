@@ -433,3 +433,41 @@ async def test_inviting_a_thousand_addresses_at_creation_is_refused(
         },
     )
     assert response.status_code == 422
+
+
+async def test_a_snapshot_names_who_wrote_it_not_who_replaced_it(
+    client: httpx.AsyncClient,
+) -> None:
+    """Version history answers "who changed this", so it has to name the author.
+
+    The snapshot holds the document *before* a write, and it was stamped with
+    the person doing the write — so the history said Bob authored Alice's work.
+    """
+    alice = await register(client)
+    project = await create(client, alice)
+    bob = await register(client)
+    await client.post(
+        f"{API}/projects/{project['id']}/members",
+        headers=alice.headers,
+        json={"email": bob.email, "role": "EDITOR"},
+    )
+
+    detail = unwrap(await client.get(f"{API}/projects/{project['id']}", headers=alice.headers))
+    await client.put(
+        f"{API}/projects/{project['id']}/document",
+        headers=alice.headers,
+        json={"doc": sample_doc(3), "base_version": detail["doc_version"]},
+    )
+    after_alice = unwrap(await client.get(f"{API}/projects/{project['id']}", headers=alice.headers))
+    await client.put(
+        f"{API}/projects/{project['id']}/document",
+        headers=bob.headers,
+        json={"doc": sample_doc(4), "base_version": after_alice["doc_version"]},
+    )
+
+    versions = unwrap(
+        await client.get(f"{API}/projects/{project['id']}/versions", headers=alice.headers)
+    )
+    # The newest snapshot holds what Alice wrote, so it is hers.
+    newest = versions["items"][0]
+    assert newest["created_by"] == alice.id
