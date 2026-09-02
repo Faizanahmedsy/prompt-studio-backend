@@ -40,9 +40,16 @@ what the dashboard gives you is what you paste.
 
 1. Sign up at [render.com](https://render.com) with GitHub and give it access
    to `prompt-studio-backend`.
-2. **Blueprints → New Blueprint Instance**, pick the repo, branch
-   `feat/backend`. It reads [`render.yaml`](../render.yaml) and creates the
-   service already configured.
+2. **Blueprints → New Blueprint Instance**, pick the repo, branch `main`. It
+   reads [`render.yaml`](../render.yaml) and creates the service already
+   configured.
+
+   > The branch matters more than it looks. The existing service was created
+   > from the dashboard pointing at `feat/backend` while every sprint merged
+   > into `main`, so a finished sprint deployed nothing and the repo gave no
+   > clue why. `render.yaml` now states `branch: main`, but a service created
+   > by hand does not read that file — for that one, change it under
+   > **Settings → Build & Deploy → Branch**.
 3. It will ask for the four values the file marks `sync: false`:
 
    | | |

@@ -15,6 +15,10 @@ services:
     # Ohio, to sit beside a Neon project in AWS US East 2 (Ohio). Every
     # query crosses this gap, so the two want to be in the same place.
     region: ohio
+    # The branch Render deploys, stated here rather than left to the dashboard.
+    # It was set to `feat/backend` there while everything merged into `main`, so
+    # a finished sprint deployed nothing and nobody could see why from the repo.
+    branch: main
     dockerfilePath: ./Dockerfile
     # Overrides the image's CMD: migrate, seed, then serve on Render's $PORT.
     dockerCommand: ./scripts/start.sh
