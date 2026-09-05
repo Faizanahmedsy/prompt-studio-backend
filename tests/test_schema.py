@@ -92,6 +92,11 @@ def test_every_model_is_registered() -> None:
         "project_activity",
         "project_comments",
         "audit_logs",
+        "api_tokens",
+        "discovery_runs",
+        "discovery_items",
+        "discovery_answers",
+        "discovery_artifacts",
     }
     assert expected <= registered, expected - registered
     assert models.Base is Base

@@ -95,3 +95,25 @@ class SessionRead(BaseModel):
     last_used_at: datetime | None = None
     expires_at: datetime
     is_current: bool = False
+
+
+class ApiTokenCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=100, description="What this token is for")
+
+
+class ApiTokenRead(BaseModel):
+    """A token as it appears on the list — never its secret."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    created_at: datetime
+    revoked_at: datetime | None = None
+
+
+class ApiTokenCreated(ApiTokenRead):
+    """The one response that carries the plaintext. It is not stored, so this
+    is the only chance anybody has to copy it."""
+
+    token: str

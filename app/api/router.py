@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.modules.admin.router import router as admin_router
 from app.modules.auth.router import router as auth_router
+from app.modules.discovery.router import router as discovery_router
 from app.modules.projects.router import public_router
 from app.modules.projects.router import router as projects_router
 from app.modules.rbac.router import router as rbac_router
@@ -17,6 +18,7 @@ api_router.include_router(auth_router)
 api_router.include_router(users_router)
 api_router.include_router(rbac_router)
 api_router.include_router(projects_router)
+api_router.include_router(discovery_router)
 # Anonymous by design: the one route on it serves a project whose owner minted
 # a public link. Mounted here rather than under /projects so the "everything in
 # this prefix needs a signed-in caller" rule stays true of that prefix.

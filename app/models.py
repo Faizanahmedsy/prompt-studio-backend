@@ -9,7 +9,13 @@ makes that impossible to get wrong.
 
 from app.core.base_model import Base
 from app.modules.audit.models import AuditLog
-from app.modules.auth.models import RevokedToken, Session
+from app.modules.auth.models import ApiToken, RevokedToken, Session
+from app.modules.discovery.models import (
+    DiscoveryAnswer,
+    DiscoveryArtifact,
+    DiscoveryItem,
+    DiscoveryRun,
+)
 from app.modules.projects.models import (
     Project,
     ProjectActivity,
@@ -20,8 +26,13 @@ from app.modules.projects.models import (
 from app.modules.users.models import User, UserCredentials
 
 __all__ = [
+    "ApiToken",
     "AuditLog",
     "Base",
+    "DiscoveryAnswer",
+    "DiscoveryArtifact",
+    "DiscoveryItem",
+    "DiscoveryRun",
     "Project",
     "ProjectActivity",
     "ProjectComment",

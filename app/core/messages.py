@@ -46,6 +46,15 @@ class ErrorMessage:
     STALE_DOCUMENT = "Someone else saved a newer version of this project. Reload before saving"
     INVALID_PROJECT_DOC = "The project document is not in a shape this API understands"
 
+    # ── discovery ────────────────────────────────────────────────────────────
+    RUN_NOT_FOUND = "That discovery run does not exist on this project"
+    ITEM_NOT_FOUND = "That question is not part of this run"
+    ARTIFACT_NOT_FOUND = "No file by that name on this project"
+    ARTIFACT_TOO_LARGE = "That file is over the 4MB limit"
+
+    # ── api tokens ───────────────────────────────────────────────────────────
+    TOKEN_NOT_FOUND = "That API token does not exist"
+
     # ── admin ────────────────────────────────────────────────────────────────
     CANNOT_DEACTIVATE_SELF = "You cannot deactivate your own account"
     CANNOT_DEMOTE_LAST_SUPERADMIN = "The platform must keep at least one superadmin"
@@ -78,6 +87,16 @@ class ResponseMessage:
     LEFT_PROJECT = "You have left the project"
     VERSION_SAVED = "Version saved"
     VERSION_RESTORED = "Version restored"
+
+    # ── discovery ────────────────────────────────────────────────────────────
+    DISCOVERY_RUN_CREATED = "Discovery run created"
+    DECISION_SAVED = "Decision saved"
+    DEFAULTS_ACCEPTED = "Proposed answers accepted"
+    ARTIFACT_SAVED = "File saved"
+
+    # ── api tokens ───────────────────────────────────────────────────────────
+    TOKEN_CREATED = "API token created — copy it now, it is not shown again"
+    TOKEN_REVOKED = "API token revoked"
 
     # ── admin ────────────────────────────────────────────────────────────────
     USER_CREATED = "User created"

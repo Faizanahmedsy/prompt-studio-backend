@@ -9,8 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit_context import get_audit_context
 from app.core.config import settings
-from app.core.constants import TokenType
-from app.core.exceptions import AuthenticationError, ConflictError, ValidationError
+from app.core.constants import API_TOKEN_PREFIX, TokenType
+from app.core.exceptions import AuthenticationError, ConflictError, NotFoundError, ValidationError
 from app.core.mailer import send_email_verification, send_password_reset
 from app.core.messages import ErrorMessage
 from app.core.security import (
@@ -22,11 +22,12 @@ from app.core.security import (
     decode_token,
     fingerprint,
     hash_password,
+    new_opaque_token,
     verify_password,
 )
 from app.core.time import now
 from app.modules.audit import service as audit_service
-from app.modules.auth.models import RevokedToken, Session
+from app.modules.auth.models import ApiToken, RevokedToken, Session
 from app.modules.auth.schemas import LoginResponse, RegisterRequest, Token
 from app.modules.users import service as user_service
 from app.modules.users.models import User, UserCredentials
@@ -663,3 +664,51 @@ async def _already_revoked(db: AsyncSession, jti: str) -> bool:
 async def purge_expired_revocations(db: AsyncSession) -> None:
     """Drop denylist rows whose tokens have expired anyway. Caller commits."""
     await db.execute(delete(RevokedToken).where(RevokedToken.expires_at < now()))
+
+
+# ── personal API tokens ──────────────────────────────────────────────────────
+
+
+async def create_api_token(db: AsyncSession, user: User, name: str) -> tuple[ApiToken, str]:
+    """Mint a token and return it with its plaintext, which is never stored."""
+    plaintext = API_TOKEN_PREFIX + new_opaque_token()
+    token = ApiToken(user_id=user.id, name=name, token_hash=fingerprint(plaintext))
+    db.add(token)
+    await db.commit()
+    await db.refresh(token)
+    return token, plaintext
+
+
+async def list_api_tokens(db: AsyncSession, user: User) -> list[ApiToken]:
+    result = await db.execute(
+        select(ApiToken).where(ApiToken.user_id == user.id).order_by(ApiToken.created_at.desc())
+    )
+    return list(result.scalars())
+
+
+async def revoke_api_token(db: AsyncSession, user: User, token_id: uuid.UUID) -> None:
+    token = await db.get(ApiToken, token_id)
+    if token is None or token.user_id != user.id:
+        raise NotFoundError(ErrorMessage.TOKEN_NOT_FOUND)
+    token.revoked_at = token.revoked_at or now()
+    await db.commit()
+
+
+async def api_token_payload(db: AsyncSession, plaintext: str) -> dict[str, Any]:
+    """Resolve a `pst_…` bearer to the same claims a JWT would have carried.
+
+    A synthetic payload rather than a second identity path: everything
+    downstream — the user lookup, the issued-password wall, project access —
+    already reads `user_id` off this dict and keeps working untouched. The
+    `jti` is namespaced so it can never collide with a real token id on the
+    revocation denylist; an API token is revoked by its own `revoked_at`.
+    """
+    result = await db.execute(
+        select(ApiToken).where(
+            ApiToken.token_hash == fingerprint(plaintext), ApiToken.revoked_at.is_(None)
+        )
+    )
+    token = result.scalar_one_or_none()
+    if token is None:
+        raise AuthenticationError()
+    return {"user_id": str(token.user_id), "type": TokenType.ACCESS, "jti": f"pat:{token.id}"}

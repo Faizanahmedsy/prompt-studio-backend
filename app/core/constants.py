@@ -17,6 +17,11 @@ class TokenType(StrEnum):
 
 TOKEN_TYPE_BEARER = "bearer"
 
+# What a personal API token looks like on the wire. The prefix is how the bearer
+# dependency tells one from a JWT without trying to decode it — and how a secret
+# scanner recognises one in a log or a commit.
+API_TOKEN_PREFIX = "pst_"
+
 
 class GlobalRole(StrEnum):
     """Platform-wide role. Decides who reaches the admin surface."""

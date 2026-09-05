@@ -67,3 +67,27 @@ class Session(Base, UUIDMixin, TimestampMixin):
         from app.core.time import now
 
         return self.revoked_at is None and self.expires_at > now()
+
+
+class ApiToken(Base, UUIDMixin, TimestampMixin):
+    """A personal access token, for callers that are not a browser.
+
+    Same trade as `Session`: only the SHA-256 fingerprint is stored, so the
+    plaintext exists exactly once — in the response that created it. Revocation
+    is a timestamp rather than a DELETE because "when did that CI token stop
+    working" is a question somebody asks afterwards.
+
+    The token carries the **whole** account's rights. There are no scopes: the
+    one caller is a generator that reads and writes a project's discovery data
+    on the owner's behalf, and a scope system nobody sets would be a checkbox
+    pretending to be a boundary.
+    """
+
+    __tablename__ = "api_tokens"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

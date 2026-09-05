@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit_context import set_audit_actor
 from app.core.config import settings
-from app.core.constants import TokenType
+from app.core.constants import API_TOKEN_PREFIX, TokenType
 from app.core.database import AsyncSessionLocal, get_db
 from app.core.exceptions import AuthenticationError, AuthorizationError
 from app.core.messages import ErrorMessage
@@ -25,7 +25,21 @@ DbSession = Annotated[AsyncSession, Depends(get_db)]
 
 async def get_access_payload(
     credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
+    db: DbSession,
 ) -> dict[str, Any]:
+    """The claims behind the bearer, whoever minted it.
+
+    Two kinds of credential arrive here. A JWT, which is decoded; and a personal
+    API token, which is a database lookup that answers with the same claims. The
+    branch is on the prefix rather than on a failed decode, so a malformed JWT
+    still reads as a malformed JWT.
+
+    Websockets deliberately do not pass through here: `authenticate_websocket`
+    stays JWT-only, because a socket takes its token from the query string and
+    a long-lived credential does not belong in an access log.
+    """
+    if credentials.credentials.startswith(API_TOKEN_PREFIX):
+        return await auth_service.api_token_payload(db, credentials.credentials)
     try:
         payload: dict[str, Any] = jwt.decode(
             credentials.credentials, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
