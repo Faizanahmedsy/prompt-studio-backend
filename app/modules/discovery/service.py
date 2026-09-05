@@ -46,6 +46,15 @@ async def list_runs(db: AsyncSession, project_id: uuid.UUID) -> list[DiscoveryRu
 async def create_run(
     db: AsyncSession, project_id: uuid.UUID, user: User, data: RunCreate
 ) -> DiscoveryRun:
+    # Checked here rather than left to `uq_discovery_items_run_id_key`: a
+    # generator that emits `Q6` twice would otherwise get a 500 out of the
+    # database instead of being told which key it repeated.
+    seen: set[str] = set()
+    for item in data.items:
+        if item.key in seen:
+            raise ValidationError(f"{ErrorMessage.DUPLICATE_ITEM_KEY}: {item.key}")
+        seen.add(item.key)
+
     run = DiscoveryRun(
         project_id=project_id, label=data.label, source=data.source, created_by=user.id
     )
@@ -88,7 +97,9 @@ async def latest_answers(db: AsyncSession, run_id: uuid.UUID) -> dict[uuid.UUID,
     result = await db.execute(
         select(DiscoveryAnswer)
         .where(DiscoveryAnswer.run_id == run_id)
-        .order_by(DiscoveryAnswer.created_at.asc())
+        # Two answers written in the same microsecond (a bulk accept) must
+        # still fold in one fixed order, or "the latest" is a coin toss.
+        .order_by(DiscoveryAnswer.created_at.asc(), DiscoveryAnswer.id.asc())
     )
     return {answer.item_id: answer for answer in result.scalars()}
 
@@ -242,8 +253,11 @@ async def read_artifact(db: AsyncSession, project_id: uuid.UUID, name: str) -> D
 
 async def save_artifact(
     db: AsyncSession, project_id: uuid.UUID, user: User, name: str, data: ArtifactUpsert
-) -> DiscoveryArtifact:
+) -> tuple[DiscoveryArtifact, bool]:
     """Write one file, replacing whatever was there under that name.
+
+    Returns the row and whether it is new, so the route can answer 201 the
+    first time and 200 on every push after it.
 
     Upsert rather than insert-a-version: this is a cache of what the generator
     holds on disk, and `weaver push` runs after every change. The history that
@@ -254,6 +268,7 @@ async def save_artifact(
     sha = hashlib.sha256(data.body.encode()).hexdigest()
 
     artifact = await _find_artifact(db, project_id, name)
+    created = artifact is None
     if artifact is None:
         artifact = DiscoveryArtifact(project_id=project_id, name=name)
         db.add(artifact)
@@ -263,4 +278,4 @@ async def save_artifact(
     artifact.updated_by = user.id
     await db.commit()
     await db.refresh(artifact)
-    return artifact
+    return artifact, created

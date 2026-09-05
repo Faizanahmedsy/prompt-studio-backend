@@ -280,14 +280,17 @@ async def test_an_artifact_is_one_row_per_name_and_carries_its_sha(
     # way the generator writes them.
     url = f"{API}/projects/{project_id}/discovery/artifacts/discovery/kb.md"
 
-    first = unwrap(
-        await client.put(url, headers=owner.headers, json={"kind": "md", "body": "# KB"})
-    )
+    created = await client.put(url, headers=owner.headers, json={"kind": "md", "body": "# KB"})
+    assert created.status_code == 201, created.text
+    first = unwrap(created)
     assert first["sha"] == hashlib.sha256(b"# KB").hexdigest()
 
-    second = unwrap(
-        await client.put(url, headers=owner.headers, json={"kind": "md", "body": "# KB, revised"})
+    replaced = await client.put(
+        url, headers=owner.headers, json={"kind": "md", "body": "# KB, revised"}
     )
+    # 200, not 201: the second push replaced a file rather than adding one.
+    assert replaced.status_code == 200, replaced.text
+    second = unwrap(replaced)
     assert second["id"] == first["id"], "pushing again must replace the row, not add one"
     assert second["sha"] == hashlib.sha256(b"# KB, revised").hexdigest()
     assert second["sha"] != first["sha"]
@@ -317,6 +320,40 @@ async def test_an_oversized_artifact_is_refused(client: httpx.AsyncClient) -> No
     )
     assert response.status_code == 422
     assert "4MB" in response.json()["message"]
+
+
+async def test_a_repeated_key_is_refused_before_the_database_sees_it(
+    client: httpx.AsyncClient,
+) -> None:
+    """The unique index would answer 500. The client needs to be told which key
+    it sent twice."""
+    owner = await register(client)
+    project_id = await create_project(client, owner)
+    response = await client.post(
+        f"{API}/projects/{project_id}/discovery/runs",
+        headers=owner.headers,
+        json={"label": "duplicated", "items": [ITEMS[0], ITEMS[1], ITEMS[0]]},
+    )
+    assert response.status_code == 422
+    assert "R1" in response.json()["message"]
+
+    listed = unwrap(
+        await client.get(f"{API}/projects/{project_id}/discovery/runs", headers=owner.headers)
+    )
+    assert listed == [], "a rejected batch must not leave a half-built run behind"
+
+
+async def test_an_artifact_name_longer_than_the_column_is_refused(
+    client: httpx.AsyncClient,
+) -> None:
+    owner = await register(client)
+    project_id = await create_project(client, owner)
+    response = await client.put(
+        f"{API}/projects/{project_id}/discovery/artifacts/{'n' * 201}.md",
+        headers=owner.headers,
+        json={"body": "x"},
+    )
+    assert response.status_code == 422
 
 
 async def test_a_run_from_another_project_is_not_reachable(client: httpx.AsyncClient) -> None:

@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Path, Query, Request, status
+from fastapi import APIRouter, Path, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.envelope import set_response_message
@@ -29,7 +29,11 @@ router = APIRouter(prefix="/projects/{project_id}/discovery", tags=["Discovery"]
 
 # `:path` because an artifact is addressed by its path under `weave/` —
 # `discovery/kb.md` — and a plain path parameter stops at the first slash.
-ArtifactName = Annotated[str, Path(description="Path under weave/, e.g. discovery/kb.md")]
+# Bounded to the column's width: an unbounded name reaches Postgres as a value
+# too long for `varchar(200)` and comes back as a 500 rather than a 422.
+ArtifactName = Annotated[
+    str, Path(max_length=200, description="Path under weave/, e.g. discovery/kb.md")
+]
 
 
 @router.get("/runs", response_model=list[RunSummary])
@@ -168,9 +172,12 @@ async def save_artifact(
     db: DbSession,
     current_user: CurrentUser,
     request: Request,
+    response: Response,
 ) -> ArtifactRead:
     """Write one file. One row per name per project — pushing again replaces it."""
-    artifact = await service.save_artifact(db, access.project.id, current_user, name, data)
+    artifact, created = await service.save_artifact(db, access.project.id, current_user, name, data)
+    if created:
+        response.status_code = status.HTTP_201_CREATED
     set_response_message(request, ResponseMessage.ARTIFACT_SAVED)
     return ArtifactRead.model_validate(artifact)
 

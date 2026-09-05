@@ -702,6 +702,11 @@ async def api_token_payload(db: AsyncSession, plaintext: str) -> dict[str, Any]:
     already reads `user_id` off this dict and keeps working untouched. The
     `jti` is namespaced so it can never collide with a real token id on the
     revocation denylist; an API token is revoked by its own `revoked_at`.
+
+    One consequence, deliberate: `POST /auth/logout` carrying a `pst_` token is
+    a no-op. There is no session behind it to end, and the denylist would be
+    denying a `jti` nothing ever checks. An API token is revoked by
+    `DELETE /users/me/tokens/{id}`.
     """
     result = await db.execute(
         select(ApiToken).where(

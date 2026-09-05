@@ -48,6 +48,7 @@ class ErrorMessage:
 
     # ── discovery ────────────────────────────────────────────────────────────
     RUN_NOT_FOUND = "That discovery run does not exist on this project"
+    DUPLICATE_ITEM_KEY = "Two questions in this run share the same key"
     ITEM_NOT_FOUND = "That question is not part of this run"
     ARTIFACT_NOT_FOUND = "No file by that name on this project"
     ARTIFACT_TOO_LARGE = "That file is over the 4MB limit"

@@ -100,6 +100,10 @@ async def test_a_token_belongs_to_one_account(client: httpx.AsyncClient) -> None
 
 
 async def test_a_token_that_was_never_issued_is_refused(client: httpx.AsyncClient) -> None:
-    for credential in ("pst_not-a-real-token", "not-a-jwt-either", ""):
+    for credential in ("pst_not-a-real-token", "not-a-jwt-either"):
         response = await client.get(f"{API}/users/me", headers=bearer(credential))
-        assert response.status_code in (401, 403), credential
+        assert response.status_code == 401, credential
+
+    # No credential at all never reaches either path — `HTTPBearer` refuses the
+    # request before the dependency runs, and it answers the same 401.
+    assert (await client.get(f"{API}/users/me")).status_code == 401
