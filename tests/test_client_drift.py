@@ -30,6 +30,8 @@ PAIRS = {
     "api/auth.ts": "lib/api/auth.ts",
     "api/projects.ts": "lib/api/projects.ts",
     "api/admin.ts": "lib/api/admin.ts",
+    "api/discovery.ts": "lib/api/discovery.ts",
+    "api/tokens.ts": "lib/api/tokens.ts",
     "stores/auth-store.ts": "stores/use-auth-store.ts",
     "collab/use-collaboration.ts": "features/collab/use-collaboration.ts",
 }
