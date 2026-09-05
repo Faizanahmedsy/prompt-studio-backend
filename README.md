@@ -267,6 +267,9 @@ Things that are true because they were made true, and would not be by default:
   session row records the `jti` of the access token it minted, so "sign out this
   device", "sign out everywhere" and an admin password re-issue all take effect
   at once rather than an hour later.
+- **Signing out everywhere does not revoke personal API tokens** — GitHub-PAT
+  semantics, by design. A `pst_` token is not a session; it survives every
+  logout and ends only at `DELETE /users/me/tokens/{id}`.
 - **Removing or demoting a member closes their open editor socket** — across
   workers, over the same Redis bus collaboration uses. Membership is resolved at
   the handshake, so without this the fan-out kept sending a removed member the

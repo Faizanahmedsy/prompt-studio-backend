@@ -22,7 +22,7 @@ Authenticate with `Authorization: Bearer <access_token>`.
 | `POST` | `/login` | `{email, password}` → tokens + `user` + `must_change_password`. |
 | `POST` | `/refresh` | `{refresh_token}` → a **new pair**. The old refresh token dies. |
 | `POST` | `/logout` | `{refresh_token?}`. Revokes the access token immediately. Body optional. |
-| `POST` | `/logout-everywhere` | Ends every session on the account. |
+| `POST` | `/logout-everywhere` | Ends every session on the account. Personal API tokens are **not** revoked — revoke those at `DELETE /users/me/tokens/{id}`. |
 | `GET` | `/sessions` | Devices currently signed in. |
 | `DELETE` | `/sessions/{id}` | End one of them. |
 | `POST` | `/change-password` | `{current_password, new_password}`. |

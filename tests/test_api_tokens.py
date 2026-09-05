@@ -107,3 +107,20 @@ async def test_a_token_that_was_never_issued_is_refused(client: httpx.AsyncClien
     # No credential at all never reaches either path — `HTTPBearer` refuses the
     # request before the dependency runs, and it answers the same 401.
     assert (await client.get(f"{API}/users/me")).status_code == 401
+
+
+async def test_logout_everywhere_leaves_api_tokens_alive(client: httpx.AsyncClient) -> None:
+    """GitHub-PAT semantics, and the reason it is written down in three places.
+
+    "Sign out everywhere" ends sessions. A token a script holds is not a
+    session, so CI does not break because somebody clicked the button on their
+    laptop — and the flip side, that a leaked token survives the panic button,
+    is why the dialog says to revoke it there.
+    """
+    actor = await register(client)
+    token = await mint(client, actor)
+
+    revoked = unwrap(await client.post(f"{API}/auth/logout-everywhere", headers=actor.headers))
+    assert revoked["sessions_revoked"] >= 1
+
+    assert (await client.get(f"{API}/users/me", headers=bearer(token))).status_code == 200

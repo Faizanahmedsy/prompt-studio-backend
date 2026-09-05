@@ -334,6 +334,10 @@ async def logout_everywhere(db: AsyncSession, user: User) -> int:
     The filter is on `expires_at`, not `revoked_at`: a session that was already
     rotated away by a refresh still has a live access token out there, and
     "sign out everywhere" has to mean everywhere.
+
+    Personal API tokens are deliberately left alone — GitHub-PAT semantics: a
+    token a script holds is not a session, and is revoked only by
+    `DELETE /users/me/tokens/{id}`.
     """
     revoked = await revoke_all_sessions(db, user)
     await db.commit()
