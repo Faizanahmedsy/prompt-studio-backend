@@ -11,6 +11,10 @@ directory, so anyone who has worked in that repo already knows where things are.
 
 ---
 
+> **Picking this up cold?** Read [`docs/kt.md`](docs/kt.md) — the full
+> knowledge transfer: the module map, the concurrency scheme, every security
+> invariant and why it exists, deployment, and the open issues.
+
 ## The one rule everything else is built around
 
 > **A project is visible to the email addresses added to it. Nobody else.**
